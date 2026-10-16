@@ -1,0 +1,356 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Photo Transfer</title>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#1f2a3d">
+<style>
+  :root { color-scheme: light dark; --bg:#f4f7fb; --card:#fff; --ink:#1f2a3d; --muted:#5b6a7d; --line:#d6dee9; --ok:#2e7d32; --err:#c62828; --warn:#a07d1e; --acc:#1f2a3d; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#12161d; --card:#1b212b; --ink:#e6ebf2; --muted:#9aa7b8; --line:#2c3543; --acc:#3d6fd1; } }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html, body { height:100%; margin:0; overflow:hidden; overscroll-behavior:none; }
+  body { font:16px/1.35 system-ui,Segoe UI,Roboto,sans-serif; background:var(--bg); color:var(--ink); }
+  #app { display:flex; flex-direction:column; height:100vh; height:100dvh; max-width:640px; margin:0 auto; }
+  .hide { display:none !important; }
+  button { font:inherit; color:inherit; background:var(--card); border:1px solid var(--line); border-radius:10px; padding:10px 12px; }
+  button.primary { background:var(--acc); color:#fff; border-color:var(--acc); }
+  input[type=text], input[type=password] { width:100%; padding:10px; font-size:16px; border:1px solid var(--line); border-radius:10px; background:transparent; color:inherit; margin-top:4px; }
+  .muted { color:var(--muted); font-size:13px; }
+  #bar { flex:none; padding:3px 12px; padding-top:calc(3px + env(safe-area-inset-top)); font-weight:600; font-size:12px; background:#fff8e6; color:var(--warn); }
+  #bar.ok { background:#e8f5e9; color:var(--ok); } #bar.err { background:#fdecea; color:var(--err); }
+  #top { flex:none; display:flex; align-items:center; gap:8px; padding:6px 10px; }
+  #top .seg { flex:1; display:flex; gap:6px; }
+  #top .seg button { flex:1; padding:8px; font-weight:700; }
+  #top .seg button.on { background:var(--acc); color:#fff; border-color:var(--acc); }
+  .ico { width:42px; height:42px; padding:0; border-radius:50%; font-size:19px; line-height:1; }
+  #phoneView { display:flex; flex-direction:column; flex:1; min-height:0; }
+  #camArea { position:relative; flex:1; min-height:0; display:flex; align-items:center; justify-content:center; background:#0a0d12; }
+  #camBox { position:relative; background:#000; border-radius:10px; overflow:hidden; display:flex; align-items:center; justify-content:center; touch-action:none; width:100%; height:100%; }
+  #video { width:100%; height:100%; object-fit:cover; transform-origin:center; will-change:transform; }
+  #camPlaceholder { position:absolute; color:#9aa7b8; font-size:14px; text-align:center; padding:12px; }
+  #flash { position:absolute; inset:0; background:#fff; opacity:0; pointer-events:none; }
+  #flash.on { animation:fl .25s; } @keyframes fl { 0%{opacity:.85} 100%{opacity:0} }
+  .ov { position:absolute; z-index:3; }
+  #shapeBtn { left:8px; top:8px; background:rgba(0,0,0,.55); color:#fff; border:1px solid rgba(255,255,255,.35); border-radius:16px; padding:6px 12px; font-size:14px; font-weight:700; }
+  .tr { right:8px; top:8px; display:flex; flex-direction:column; gap:8px; }
+  .tr button { width:40px; height:40px; padding:0; border-radius:50%; font-size:18px; background:rgba(0,0,0,.55); border:1px solid rgba(255,255,255,.35); color:#fff; }
+  #zoomChips { left:0; right:0; bottom:8px; justify-content:center; display:flex; gap:8px; }
+  #zoomChips button { padding:5px 12px; font-size:13px; border-radius:16px; background:rgba(0,0,0,.55); color:#fff; border:1px solid rgba(255,255,255,.35); }
+  #zoomChips button.on { background:var(--acc); border-color:#fff; }
+  #toast { position:absolute; left:10px; right:10px; top:10px; z-index:6; background:rgba(0,0,0,.82); color:#fff; padding:8px 12px; border-radius:10px; font-size:13px; text-align:center; opacity:0; pointer-events:none; transition:opacity .2s; }
+  #toast.on { opacity:1; }
+  #sendLine { flex:none; display:flex; justify-content:space-between; align-items:center; gap:8px; padding:3px 12px; font-size:13px; color:var(--muted); min-height:26px; }
+  #sendLine button { padding:4px 10px; font-size:13px; }
+  #ctrl { flex:none; display:flex; align-items:center; justify-content:space-around; padding:8px 10px; padding-bottom:calc(8px + env(safe-area-inset-bottom)); background:var(--bg); }
+  .shutter { width:84px; height:84px; border-radius:50%; border:6px solid var(--acc); background:#fff; padding:0; font-size:0; box-shadow:0 0 0 3px var(--bg) inset; }
+  .shutter:active { transform:scale(.94); }
+  .slot { width:84px; border:2px dashed var(--line); border-radius:12px; padding:4px; text-align:center; background:var(--card); }
+  .slot.done { border-color:var(--ok); border-style:solid; } .slot.fail { border-color:var(--err); border-style:solid; }
+  .slot .t { font-weight:700; font-size:12px; }
+  .slot .thumb { height:46px; display:flex; align-items:center; justify-content:center; color:var(--muted); font-size:11px; overflow:hidden; border-radius:6px; background:rgba(127,127,127,.12); margin:3px 0; }
+  .slot .thumb img { max-width:100%; max-height:46px; }
+  .slot .st { font-size:11px; min-height:14px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .side { width:84px; display:flex; flex-direction:column; gap:8px; }
+  .side button { padding:10px 4px; font-size:14px; }
+  #pcView { flex:1; overflow:auto; padding:12px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:14px; margin-bottom:12px; }
+  .card button { width:100%; margin-top:8px; }
+  #log { font-size:13px; line-height:1.6; max-height:40vh; overflow:auto; white-space:pre-wrap; }
+  .sheet { position:fixed; inset:0; z-index:20; }
+  .sheet .back { position:absolute; inset:0; background:rgba(0,0,0,.5); }
+  .sheet .panel { position:absolute; left:0; right:0; bottom:0; max-height:85dvh; max-height:85vh; overflow:auto; background:var(--card); border-radius:18px 18px 0 0; padding:14px 14px calc(18px + env(safe-area-inset-bottom)); max-width:640px; margin:0 auto; }
+  .sh { display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; font-weight:700; }
+  .sec { margin:14px 0 4px; font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:.5px; }
+  .chips { display:flex; flex-wrap:wrap; gap:6px; }
+  .chips button { padding:7px 13px; font-size:14px; border-radius:16px; }
+  .chips button.on { background:var(--acc); color:#fff; border-color:var(--acc); }
+  .zoomrow { display:flex; align-items:center; gap:8px; }
+  .zoomrow input[type=range] { flex:1; accent-color:var(--acc); height:28px; }
+  .zoomrow .zb { width:40px; height:40px; border-radius:50%; padding:0; font-size:20px; }
+  #zVal { min-width:48px; text-align:right; font-weight:700; font-size:14px; }
+  .alt { display:flex; gap:8px; } .alt button { flex:1; }
+  label.chk { display:flex; align-items:center; gap:8px; font-size:14px; margin-top:10px; }
+  input[type=file] { display:none; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="bar">Starting…</div>
+  <div id="top">
+    <div class="seg">
+      <button id="tabPhone" class="on">📱 Phone (send)</button>
+      <button id="tabPc">💻 PC (receive)</button>
+    </div>
+    <button class="ico" id="btnMore" aria-label="Settings">⚙</button>
+  </div>
+  <div id="phoneView">
+    <div id="camArea">
+      <div id="camBox">
+        <video id="video" playsinline muted autoplay></video>
+        <div id="camPlaceholder">Camera is off — tap 📷</div>
+        <div id="flash"></div>
+        <button class="ov" id="shapeBtn" aria-label="Photo shape">1:1</button>
+        <div class="ov tr">
+          <button id="btnFlip" aria-label="Switch camera">⟲</button>
+          <button id="btnTorch" aria-label="Torch" hidden>🔦</button>
+          <button id="btnCam" aria-label="Camera on/off">📷</button>
+        </div>
+        <div class="ov hide" id="zoomChips" role="group" aria-label="Zoom presets"></div>
+      </div>
+      <div id="toast"></div>
+    </div>
+    <div id="sendLine"><span id="sendTxt">Nothing sent yet.</span><button id="btnRetry" class="hide">↻ Retry failed</button></div>
+    <div id="ctrl">
+      <div class="slot" id="slotLast"><div class="t">Last photo</div><div class="thumb" id="thLast">—</div><div class="st" id="stLast"></div></div>
+      <button class="shutter" id="shutter" aria-label="Take photo">●</button>
+      <div class="side">
+        <button id="btnApp">📱 Camera app</button>
+        <button id="btnGal">🖼 Gallery</button>
+      </div>
+    </div>
+  </div>
+  <div id="pcView" class="hide">
+    <div class="card">
+      <b>Save photos into a PC folder</b>
+      <div class="muted" style="margin-top:4px">Use Chrome or Edge. Pick any folder: normal, network, or your OneDrive folder. Keep this tab open; new photos are saved every 10 seconds.</div>
+      <button class="primary" id="btnPick">📁 Choose PC folder</button>
+      <div id="folderName" class="muted" style="margin-top:8px">No folder chosen</div>
+      <label class="chk"><input type="checkbox" id="delAfter" checked> Delete from Supabase after saving</label>
+      <button id="btnSync">🔄 Sync now</button>
+    </div>
+    <div class="card"><div id="log">Ready.</div></div>
+  </div>
+</div>
+<div id="sheet" class="sheet hide">
+  <div class="back"></div>
+  <div class="panel">
+    <div class="sh"><span>Settings</span><button id="sheetClose">✕ Close</button></div>
+    <div class="sec">Supabase (enter once per device)</div>
+    <label class="muted">Project URL</label>
+    <input type="text" id="sbUrl" placeholder="https://xxxx.supabase.co" autocapitalize="off" autocomplete="off">
+    <label class="muted">Anon public key</label>
+    <input type="password" id="sbKey" placeholder="eyJ..." autocomplete="off">
+    <label class="muted">Bucket name</label>
+    <input type="text" id="sbBucket" value="photos" autocapitalize="off">
+    <button class="primary" id="btnSaveCfg" style="width:100%;margin-top:10px">Save settings</button>
+    <div class="sec">Photo shape</div>
+    <div class="chips" id="ratioChips">
+      <button data-r="1:1">1:1</button><button data-r="4:3">4:3</button><button data-r="3:4">3:4</button><button data-r="3:2">3:2</button><button data-r="16:9">16:9</button><button data-r="full">Full</button>
+    </div>
+    <div class="sec">Photo size</div>
+    <div class="chips" id="sizeChips">
+      <button data-s="actual">Actual size</button><button data-s="reduced">Reduced</button>
+    </div>
+    <div class="sec">Zoom</div>
+    <div class="zoomrow hide" id="zoomRow">
+      <button class="zb" id="zOut" aria-label="Zoom out">−</button>
+      <input type="range" id="zoom" min="1" max="4" step="0.1" value="1" aria-label="Zoom">
+      <button class="zb" id="zIn" aria-label="Zoom in">＋</button>
+      <span id="zVal">1.0×</span>
+    </div>
+    <div class="muted">Pinch on the camera, or use the 1× 2× 3× buttons on it.</div>
+    <div id="camMsg" class="muted" style="margin-top:6px"></div>
+  </div>
+</div>
+<input type="file" id="fApp" accept="image/*" capture="environment">
+<input type="file" id="fGal" accept="image/*" multiple>
+<canvas id="cv" class="hide"></canvas>
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+  const cfg = () => ({ url: (localStorage.getItem('pt_url') || '').replace(/\/+$/, ''), key: localStorage.getItem('pt_key') || '', bucket: localStorage.getItem('pt_bucket') || 'photos' });
+  const hdr = (x = {}) => { const c = cfg(); return { apikey: c.key, Authorization: 'Bearer ' + c.key, ...x }; };
+  const hasCfg = () => { const c = cfg(); return !!(c.url && c.key); };
+  function setBar(t, cls) { const b = $('bar'); b.textContent = t; b.className = cls || ''; }
+  function toast(t) { const el = $('toast'); el.textContent = t || ''; el.classList.toggle('on', !!t); clearTimeout(toast.t); if (t) toast.t = setTimeout(() => el.classList.remove('on'), 3500); }
+  const showToast = toast;
+  $('sbUrl').value = cfg().url; $('sbKey').value = cfg().key; $('sbBucket').value = cfg().bucket;
+  $('btnSaveCfg').onclick = () => {
+    localStorage.setItem('pt_url', $('sbUrl').value.trim()); localStorage.setItem('pt_key', $('sbKey').value.trim()); localStorage.setItem('pt_bucket', $('sbBucket').value.trim() || 'photos');
+    refreshBar(); closeSheet(); toast('Settings saved.');
+  };
+  function refreshBar() { if (!hasCfg()) setBar('Open ⚙ and enter your Supabase URL + key', ''); else setBar('Connected to Supabase — ready', 'ok'); }
+  function mode(m) {
+    $('phoneView').classList.toggle('hide', m !== 'phone'); $('pcView').classList.toggle('hide', m !== 'pc');
+    $('tabPhone').classList.toggle('on', m === 'phone'); $('tabPc').classList.toggle('on', m === 'pc');
+    if (m === 'phone') { if (camWanted && !stream) startCam(); layoutCam(); } else stopCam(true);
+  }
+  $('tabPhone').onclick = () => mode('phone'); $('tabPc').onclick = () => mode('pc');
+  const sheet = $('sheet'), closeSheet = () => sheet.classList.add('hide');
+  $('btnMore').onclick = () => sheet.classList.remove('hide'); $('sheetClose').onclick = closeSheet; sheet.querySelector('.back').onclick = closeSheet;
+  const IDB = 'pt_phone', STORE = 'unsent';
+  function idb() {
+    return new Promise((res, rej) => { const r = indexedDB.open(IDB, 1); r.onupgradeneeded = () => r.result.createObjectStore(STORE, { keyPath: 'id' }); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
+  }
+  async function dbTx(m, fn) {
+    try { const db = await idb(); return await new Promise((res, rej) => { const tx = db.transaction(STORE, m), st = tx.objectStore(STORE), out = fn(st); tx.oncomplete = () => res(out && out.result !== undefined ? out.result : undefined); tx.onerror = () => rej(tx.error); }); }
+    catch (e) { return undefined; }
+  }
+  const dbPut = r => dbTx('readwrite', s => s.put(r)); const dbDel = id => dbTx('readwrite', s => s.delete(id)); const dbAll = async () => (await dbTx('readonly', s => s.getAll())) || [];
+  const video = $('video');
+  const RATIOS = { '1:1': 1, '4:3': 4 / 3, '3:4': 3 / 4, '3:2': 3 / 2, '16:9': 16 / 9, 'full': null };
+  const SHAPES = Object.keys(RATIOS);
+  let ratio = localStorage.getItem('pt_ratio') || '4:3', sizeMode = localStorage.getItem('pt_size') || 'actual';
+  let facing = 'environment', stream = null, wake = null;
+  let camWanted = localStorage.getItem('pt_cam') !== '0';
+  function renderChips() {
+    document.querySelectorAll('#ratioChips button').forEach(b => b.classList.toggle('on', b.dataset.r === ratio));
+    document.querySelectorAll('#sizeChips button').forEach(b => b.classList.toggle('on', b.dataset.s === sizeMode)); $('shapeBtn').textContent = ratio === 'full' ? 'Full' : ratio;
+  }
+  function layoutCam() {
+    const area = $('camArea'), box = $('camBox'), aw = area.clientWidth, ah = area.clientHeight; if (!aw || !ah) return;
+    const r = RATIOS[ratio]; if (!r) { box.style.width = aw + 'px'; box.style.height = ah + 'px'; return; }
+    let w = aw, h = w / r; if (h > ah) { h = ah; w = h * r; } box.style.width = Math.round(w) + 'px'; box.style.height = Math.round(h) + 'px';
+  }
+  function cropRect(w0, h0) {
+    const r = RATIOS[ratio]; if (!r) return { sx: 0, sy: 0, sw: w0, sh: h0 };
+    if (w0 / h0 > r) { const sw = Math.round(h0 * r); return { sx: Math.round((w0 - sw) / 2), sy: 0, sw, sh: h0 }; }
+    const sh = Math.round(w0 / r); return { sx: 0, sy: Math.round((h0 - sh) / 2), sw: w0, sh };
+  }
+  document.querySelectorAll('#ratioChips button').forEach(b => b.onclick = () => { ratio = b.dataset.r; localStorage.setItem('pt_ratio', ratio); renderChips(); layoutCam(); });
+  document.querySelectorAll('#sizeChips button').forEach(b => b.onclick = () => { sizeMode = b.dataset.s; localStorage.setItem('pt_size', sizeMode); renderChips(); if (stream) startCam(); });
+  $('shapeBtn').onclick = () => { ratio = SHAPES[(SHAPES.indexOf(ratio) + 1) % SHAPES.length]; localStorage.setItem('pt_ratio', ratio); renderChips(); layoutCam(); toast('Shape ' + (ratio === 'full' ? 'Full' : ratio)); };
+  window.addEventListener('resize', layoutCam); window.addEventListener('orientationchange', () => setTimeout(layoutCam, 250));
+  let zoom = 1, zMin = 1, zMax = 4, zStep = 0.1, hwZoom = false;
+  const clampZ = z => Math.min(zMax, Math.max(zMin, z)); const fmtZ = z => (Math.round(z * 10) / 10).toFixed(1) + '×';
+  function setZoomRange(caps) {
+    const zc = caps && caps.zoom;
+    if (zc && zc.max > zc.min) { hwZoom = true; zMin = zc.min; zMax = Math.min(zc.max, 10); zStep = zc.step || 0.1; } else { hwZoom = false; zMin = 1; zMax = 4; zStep = 0.1; }
+    const sl = $('zoom'); sl.min = zMin; sl.max = zMax; sl.step = zStep; const chips = $('zoomChips'); chips.innerHTML = '';
+    [1, 2, 3, 5].filter(p => p >= zMin && p <= zMax).forEach(p => { const b = document.createElement('button'); b.textContent = p + '×'; b.dataset.z = p; b.onclick = () => setZoom(p); chips.appendChild(b); });
+    $('zoomRow').classList.remove('hide'); chips.classList.toggle('hide', !chips.children.length); setZoom(zoom);
+  }
+  async function setZoom(z) {
+    zoom = clampZ(Number(z) || 1); $('zoom').value = zoom; $('zVal').textContent = fmtZ(zoom);
+    document.querySelectorAll('#zoomChips button').forEach(b => b.classList.toggle('on', Math.abs(Number(b.dataset.z) - zoom) < 0.05));
+    if (hwZoom && stream) { try { await stream.getVideoTracks()[0].applyConstraints({ advanced: [{ zoom }] }); video.style.transform = 'none'; return; } catch (e) { hwZoom = false; } }
+    video.style.transform = zoom > 1 ? 'scale(' + zoom + ')' : 'none';
+  }
+  $('zoom').oninput = e => setZoom(e.target.value); $('zIn').onclick = () => setZoom(zoom + Math.max(zStep, 0.5)); $('zOut').onclick = () => setZoom(zoom - Math.max(zStep, 0.5));
+  const pts = new Map(); let pinchD = 0, pinchZ = 1;
+  const dist = () => { const [a, b] = [...pts.values()]; return Math.hypot(a.x - b.x, a.y - b.y); };
+  const cb = $('camBox');
+  cb.addEventListener('pointerdown', e => { pts.set(e.pointerId, { x: e.clientX, y: e.clientY }); if (pts.size === 2) { pinchD = dist() || 1; pinchZ = zoom; } });
+  cb.addEventListener('pointermove', e => { if (!pts.has(e.pointerId)) return; pts.set(e.pointerId, { x: e.clientX, y: e.clientY }); if (pts.size === 2) setZoom(pinchZ * dist() / pinchD); });
+  for (const t of ['pointerup', 'pointercancel', 'pointerleave']) cb.addEventListener(t, e => pts.delete(e.pointerId));
+  function camMsg(t) { $('camMsg').textContent = t || ''; if (t) toast(t); }
+  async function startCam() {
+    if (!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)) { camMsg('Live camera needs https. Use “Camera app” instead.'); return false; }
+    stopCam(true);
+    try {
+      const hi = sizeMode === 'actual';
+      stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: facing }, width: { ideal: hi ? 4096 : 1920 }, height: { ideal: hi ? 3072 : 1080 } }, audio: false });
+      video.srcObject = stream; await video.play(); camWanted = true; localStorage.setItem('pt_cam', '1'); $('camPlaceholder').classList.add('hide'); camMsg('');
+      const tr = stream.getVideoTracks()[0], caps = tr && tr.getCapabilities ? tr.getCapabilities() : {}; $('btnTorch').hidden = !caps.torch; setZoomRange(caps);
+      try { if (navigator.wakeLock) wake = await navigator.wakeLock.request('screen'); } catch (e) {} layoutCam(); return true;
+    } catch (e) { stream = null; $('camPlaceholder').classList.remove('hide'); camMsg('Camera unavailable (' + (e.name || 'error') + '). Allow camera access, or use “Camera app”.'); return false; }
+  }
+  function stopCam(silent) {
+    if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; } video.srcObject = null; $('camPlaceholder').classList.remove('hide');
+    $('zoomRow').classList.add('hide'); $('zoomChips').classList.add('hide'); video.style.transform = 'none';
+    if (wake) { try { wake.release(); } catch (e) {} wake = null; } if (!silent) { camWanted = false; localStorage.setItem('pt_cam', '0'); }
+  }
+  $('btnCam').onclick = () => { stream ? stopCam(false) : startCam(); };
+  $('btnFlip').onclick = () => { facing = facing === 'environment' ? 'user' : 'environment'; if (stream) startCam(); };
+  $('btnTorch').onclick = async () => { try { const t = stream.getVideoTracks()[0], on = !t.__torch; await t.applyConstraints({ advanced: [{ torch: on }] }); t.__torch = on; } catch (e) { camMsg('Torch not supported.'); } };
+  document.addEventListener('visibilitychange', () => { if (document.hidden) { if (stream) stopCam(true); } else if (camWanted && !stream && !$('phoneView').classList.contains('hide')) startCam(); });
+  function snap() {
+    const w0 = video.videoWidth, h0 = video.videoHeight; if (!w0 || !h0) { toast('Camera not ready yet.'); return; }
+    let c = cropRect(w0, h0);
+    if (!hwZoom && zoom > 1) { const nw = Math.round(c.sw / zoom), nh = Math.round(c.sh / zoom); c = { sx: c.sx + Math.round((c.sw - nw) / 2), sy: c.sy + Math.round((c.sh - nh) / 2), sw: nw, sh: nh }; }
+    const cv = $('cv'), sc = sizeMode === 'actual' ? 1 : Math.min(1, 1600 / Math.max(c.sw, c.sh)); cv.width = Math.round(c.sw * sc); cv.height = Math.round(c.sh * sc);
+    cv.getContext('2d').drawImage(video, c.sx, c.sy, c.sw, c.sh, 0, 0, cv.width, cv.height);
+    cv.toBlob(b => { if (b) onCapture(b); else toast('Could not capture.'); }, 'image/jpeg', sizeMode === 'actual' ? 0.92 : 0.85);
+  }
+  function feedback() { const f = $('flash'); f.classList.remove('on'); void f.offsetWidth; f.classList.add('on'); try { navigator.vibrate && navigator.vibrate(25); } catch (e) {} }
+  $('shutter').onclick = () => { if (!hasCfg()) { sheet.classList.remove('hide'); toast('Enter Supabase settings first.'); return; } if (stream) { feedback(); snap(); } else $('fApp').click(); };
+  $('btnApp').onclick = () => { if (!hasCfg()) { sheet.classList.remove('hide'); return; } $('fApp').value = ''; $('fApp').click(); };
+  $('btnGal').onclick = () => { if (!hasCfg()) { sheet.classList.remove('hide'); return; } $('fGal').value = ''; $('fGal').click(); };
+  for (const id of ['fApp', 'fGal']) $(id).onchange = async e => { for (const f of [...(e.target.files || [])]) { try { onCapture(await processFile(f)); } catch (x) { toast('Error: ' + x.message); } } };
+  async function processFile(file) {
+    if (!RATIOS[ratio] && sizeMode === 'actual' && file.type === 'image/jpeg') return file;
+    let bmp;
+    try { bmp = await createImageBitmap(file, { imageOrientation: 'from-image' }); }
+    catch (e) { bmp = await new Promise((res, rej) => { const u = URL.createObjectURL(file), im = new Image(); im.onload = () => res(im); im.onerror = rej; im.src = u; }); }
+    const w0 = bmp.width || bmp.naturalWidth, h0 = bmp.height || bmp.naturalHeight, c = cropRect(w0, h0), cv = $('cv');
+    const sc = sizeMode === 'actual' ? 1 : Math.min(1, 1600 / Math.max(c.sw, c.sh)); cv.width = Math.round(c.sw * sc); cv.height = Math.round(c.sh * sc);
+    cv.getContext('2d').drawImage(bmp, c.sx, c.sy, c.sw, c.sh, 0, 0, cv.width, cv.height);
+    return new Promise((res, rej) => cv.toBlob(b => b ? res(b) : rej(new Error('encode failed')), 'image/jpeg', sizeMode === 'actual' ? 0.92 : 0.85));
+  }
+  async function reduceBlob(blob) {
+    const bmp = await createImageBitmap(blob), cv = $('cv'), sc = Math.min(1, 2400 / Math.max(bmp.width, bmp.height)); cv.width = Math.round(bmp.width * sc); cv.height = Math.round(bmp.height * sc); cv.getContext('2d').drawImage(bmp, 0, 0, cv.width, cv.height);
+    return new Promise((res, rej) => cv.toBlob(b => b ? res(b) : rej(new Error('encode failed')), 'image/jpeg', 0.9));
+  }
+  const S = {}, sendQ = []; let active = 0, lastKey = '';
+  function newName() {
+    const d = new Date(), p = n => String(n).padStart(2, '0');
+    return `photo_${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}_${Math.random().toString(36).slice(2, 5)}.jpg`;
+  }
+  function onCapture(blob, name) {
+    name = name || newName(); S[name] = { st: 'queued', blob, thumb: URL.createObjectURL(blob), err: '' }; lastKey = name; dbPut({ id: name, blob, ts: Date.now() }); sendQ.push(name); renderAll(); pump();
+  }
+  function pump() {
+    while (active < 2 && sendQ.length) { const k = sendQ.shift(), e = S[k]; if (!e || e.st === 'sent' || e.st === 'sending') continue; active++; send(k).finally(() => { active--; pump(); }); }
+    renderAll();
+  }
+  async function send(k) {
+    const e = S[k], c = cfg(); e.st = 'sending'; renderAll();
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      const ac = new AbortController(), t = setTimeout(() => ac.abort(), 60000);
+      try {
+        const resp = await fetch(`${c.url}/storage/v1/object/${c.bucket}/${k}`, { method: 'POST', headers: hdr({ 'Content-Type': 'image/jpeg' }), body: e.blob, signal: ac.signal });
+        if (resp.ok) { e.st = 'sent'; e.err = ''; dbDel(k); renderAll(); return; }
+        let msg = ''; try { msg = (await resp.json()).message || ''; } catch (x) {} e.err = msg || ('HTTP ' + resp.status);
+        if (resp.status === 413 && !e.reduced) { try { e.blob = await reduceBlob(e.blob); e.reduced = true; e.err = ''; attempt--; continue; } catch (x) {} }
+        if (resp.status === 400 || resp.status === 401 || resp.status === 403 || resp.status === 409 || resp.status === 413) break;
+      } catch (err) {
+        e.err = err.name === 'AbortError' ? 'timeout' : (err.message || 'network');
+        if (!e.reduced && e.blob.size > 4e6) { try { e.blob = await reduceBlob(e.blob); e.reduced = true; attempt--; continue; } catch (x) {} }
+      } finally { clearTimeout(t); }
+      if (attempt < 3) await sleep(1500 * attempt);
+    }
+    e.st = 'fail'; renderAll(); toast('Not sent: ' + e.err + ' — tap “Retry failed”.');
+  }
+  $('btnRetry').onclick = () => { toast(''); for (const [k, e] of Object.entries(S)) if (e.st === 'fail') { e.st = 'queued'; sendQ.push(k); } pump(); };
+  window.addEventListener('online', () => $('btnRetry').click());
+  function renderAll() {
+    const all = Object.values(S), sent = all.filter(e => e.st === 'sent').length, pend = all.filter(e => e.st === 'queued' || e.st === 'sending').length, fail = all.filter(e => e.st === 'fail').length;
+    $('sendTxt').textContent = !all.length ? 'Nothing sent yet.' : `Sent ${sent}` + (pend ? ` · sending ${pend}…` : '') + (fail ? ` · ${fail} failed` : '');
+    $('btnRetry').classList.toggle('hide', !fail); const e = S[lastKey], slot = $('slotLast'); slot.className = 'slot' + (e ? (e.st === 'sent' ? ' done' : e.st === 'fail' ? ' fail' : '') : '');
+    $('thLast').innerHTML = e ? '<img src="' + e.thumb + '">' : '—'; $('stLast').textContent = !e ? '' : { queued: 'queued', sending: 'sending…', sent: 'sent ✓', fail: 'failed ✗' }[e.st];
+  }
+  let dirHandle = null, syncing = false;
+  const log = m => { const t = new Date().toLocaleTimeString(); $('log').textContent = `[${t}] ${m}\n` + $('log').textContent; };
+  $('btnPick').onclick = async () => {
+    if (!window.showDirectoryPicker) { log('This browser cannot save to folders. Use Chrome or Edge on the PC.'); return; }
+    try { dirHandle = await window.showDirectoryPicker({ mode: 'readwrite' }); $('folderName').textContent = '📁 ' + dirHandle.name; log('Folder chosen: ' + dirHandle.name); syncNow(); }
+    catch (e) { log('Folder not chosen.'); }
+  };
+  async function syncNow() {
+    if (syncing) return; const c = cfg(); if (!dirHandle) { log('Choose a folder first.'); return; } if (!hasCfg()) { sheet.classList.remove('hide'); return; } syncing = true;
+    try {
+      const r = await fetch(`${c.url}/storage/v1/object/list/${c.bucket}`, { method: 'POST', headers: hdr({ 'Content-Type': 'application/json' }), body: JSON.stringify({ prefix: '', limit: 1000, offset: 0, sortBy: { column: 'created_at', order: 'asc' } }) });
+      if (!r.ok) throw new Error(r.status + ' ' + await r.text()); const items = (await r.json()).filter(i => i.name && i.id); if (items.length) log(`Found ${items.length} new photo(s).`);
+      for (const it of items) {
+        const g = await fetch(`${c.url}/storage/v1/object/authenticated/${c.bucket}/${it.name}`, { headers: hdr() }); if (!g.ok) { log('✗ Download failed: ' + it.name); continue; }
+        const blob = await g.blob(), fh = await dirHandle.getFileHandle(it.name, { create: true }), w = await fh.createWritable(); await w.write(blob); await w.close(); log('✓ Saved ' + it.name);
+        if ($('delAfter').checked) { const d = await fetch(`${c.url}/storage/v1/object/${c.bucket}/${it.name}`, { method: 'DELETE', headers: hdr() }); if (!d.ok) log('! Could not delete from Supabase: ' + it.name); }
+      }
+    } catch (e) { log('✗ Sync error: ' + e.message); }
+    syncing = false;
+  }
+  $('btnSync').onclick = syncNow;
+  setInterval(() => { if (dirHandle && !$('pcView').classList.contains('hide')) syncNow(); }, 10000);
+  async function init() {
+    renderChips(); layoutCam(); refreshBar(); if (!hasCfg()) sheet.classList.remove('hide');
+    const old = await dbAll(), DAY = 24 * 3600 * 1000;
+    for (const r of old) { if (Date.now() - r.ts > DAY) dbDel(r.id); else onCapture(r.blob, r.id); }
+    if (camWanted) startCam();
+  }
+  init();
+})();
+</script>
+</body>
+</html>
