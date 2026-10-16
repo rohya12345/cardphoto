@@ -72,6 +72,43 @@
   .alt { display:flex; gap:8px; } .alt button { flex:1; }
   label.chk { display:flex; align-items:center; gap:8px; font-size:14px; margin-top:10px; }
   input[type=file] { display:none; }
+  .slot { cursor:pointer; }
+  /* full-screen modals: QR scan, QR show, photo editor */
+  .modal { position:fixed; inset:0; z-index:40; display:flex; flex-direction:column; background:#000; color:#fff; }
+  .modal button { background:#222; color:#fff; border-color:#444; }
+  .modal button.primary { background:#3d6fd1; border-color:#3d6fd1; }
+  .modal .muted { color:#a9b4c4; }
+  .mbar { flex:none; display:flex; gap:8px; align-items:center; justify-content:space-between; padding:8px 12px; padding-top:calc(8px + env(safe-area-inset-top)); background:#111; font-weight:700; }
+  .mbar button { padding:8px 12px; }
+  #qrBody { position:relative; flex:1; min-height:0; }
+  #qrVideo { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
+  #qrFrame { position:absolute; left:50%; top:45%; width:min(62vw,280px); aspect-ratio:1; transform:translate(-50%,-50%); border:3px solid #fff; border-radius:16px; box-shadow:0 0 0 9999px rgba(0,0,0,.45); pointer-events:none; }
+  #qrMsg { flex:none; padding:12px 14px calc(12px + env(safe-area-inset-bottom)); text-align:center; background:#111; font-size:14px; }
+  #qrShowBody { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; padding:16px; overflow:auto; }
+  #qrCv { background:#fff; border-radius:12px; width:min(88vw,420px); height:auto; image-rendering:pixelated; }
+  #edStage { flex:1; min-height:0; display:flex; align-items:center; justify-content:center; overflow:hidden; padding:10px; touch-action:none; background:#0a0d12; }
+  #edWrap { position:relative; flex:none; }
+  #edCv { display:block; width:100%; height:100%; }
+  #cropBox { position:absolute; border:2px solid #fff; box-shadow:0 0 0 9999px rgba(0,0,0,.55); touch-action:none; cursor:move; }
+  #cropBox i { position:absolute; width:32px; height:32px; margin:-16px 0 0 -16px; }
+  #cropBox i::after { content:""; position:absolute; left:50%; top:50%; width:12px; height:12px; margin:-6px 0 0 -6px; background:#fff; border-radius:3px; box-shadow:0 0 0 1px rgba(0,0,0,.5); }
+  #cropBox i[data-c=nw]{left:0;top:0} #cropBox i[data-c=ne]{left:100%;top:0} #cropBox i[data-c=sw]{left:0;top:100%} #cropBox i[data-c=se]{left:100%;top:100%}
+  #cropBox i[data-c=n]{left:50%;top:0} #cropBox i[data-c=s]{left:50%;top:100%} #cropBox i[data-c=w]{left:0;top:50%} #cropBox i[data-c=e]{left:100%;top:50%}
+  #cropBox.locked i[data-c=n], #cropBox.locked i[data-c=s], #cropBox.locked i[data-c=w], #cropBox.locked i[data-c=e] { display:none; }
+  #edNav { flex:none; display:flex; align-items:center; justify-content:center; gap:14px; padding:4px; background:#111; font-size:13px; }
+  #edNav button { padding:2px 14px; font-size:18px; }
+  #edTabs { flex:none; display:flex; gap:6px; padding:6px 10px; background:#111; }
+  #edTabs button { flex:1; padding:8px 4px; font-weight:700; font-size:14px; }
+  #edTabs button.on { background:#3d6fd1; border-color:#3d6fd1; }
+  #edPanel { flex:none; max-height:34vh; overflow:auto; padding:8px 12px calc(12px + env(safe-area-inset-bottom)); background:#111; }
+  #edPanel .chips button.on { background:#3d6fd1; border-color:#3d6fd1; }
+  .rng { display:flex; align-items:center; gap:10px; margin:8px 0; font-size:14px; }
+  .rng span:first-child { width:92px; }
+  .rng input { flex:1; accent-color:#3d6fd1; height:28px; }
+  .rng .v { width:46px; text-align:right; font-weight:700; }
+  .row { display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; }
+  .row button { flex:1; padding:9px 6px; font-size:14px; }
+  .modal label.chk { color:#fff; }
 </style>
 </head>
 <body>
@@ -102,7 +139,7 @@
     </div>
     <div id="sendLine"><span id="sendTxt">Nothing sent yet.</span><button id="btnRetry" class="hide">↻ Retry failed</button></div>
     <div id="ctrl">
-      <div class="slot" id="slotLast"><div class="t">Last photo</div><div class="thumb" id="thLast">—</div><div class="st" id="stLast"></div></div>
+      <div class="slot" id="slotLast" title="Tap to edit"><div class="t">Last photo ✎</div><div class="thumb" id="thLast">—</div><div class="st" id="stLast"></div></div>
       <button class="shutter" id="shutter" aria-label="Take photo">●</button>
       <div class="side">
         <button id="btnApp">📱 Camera app</button>
@@ -126,9 +163,12 @@
   <div class="back"></div>
   <div class="panel">
     <div class="sh"><span>Settings</span><button id="sheetClose">✕ Close</button></div>
+    <div class="sec">Quick setup with QR</div>
+    <div class="alt"><button id="btnScanQr">📷 Scan setup QR</button><button id="btnShowQr">🔳 Show my QR</button></div>
+    <div class="muted" style="margin-top:6px">Enter the settings once on one device, tap “Show my QR”, then scan it from the other device.</div>
     <div class="sec">Supabase (enter once per device)</div>
     <label class="muted">Project URL</label>
-    <input type="text" id="sbUrl" placeholder="https://xxxx.supabase.co" autocapitalize="off" autocomplete="off">
+    <input type="text" id="sbUrl" placeholder="https://xxxx.supabase.co" value="https://fhtpagfnshficnwkuqpm.supabase.co" autocapitalize="off" autocomplete="off">
     <label class="muted">Anon public key</label>
     <input type="password" id="sbKey" placeholder="eyJ..." autocomplete="off">
     <label class="muted">Bucket name</label>
@@ -153,6 +193,50 @@
     <div id="camMsg" class="muted" style="margin-top:6px"></div>
   </div>
 </div>
+<div id="qrScan" class="modal hide">
+  <div class="mbar"><button id="qrClose">✕ Close</button><span>Scan setup QR</span><button id="qrFile">🖼 From image</button></div>
+  <div id="qrBody"><video id="qrVideo" playsinline muted autoplay></video><div id="qrFrame"></div></div>
+  <div id="qrMsg">Point the camera at the setup QR.</div>
+</div>
+<div id="qrShow" class="modal hide">
+  <div class="mbar"><button id="qrShowClose">✕ Close</button><span>Setup QR</span><span style="width:76px"></span></div>
+  <div id="qrShowBody">
+    <canvas id="qrCv"></canvas>
+    <div class="muted" id="qrShowMsg" style="text-align:center;max-width:420px">Generating…</div>
+  </div>
+</div>
+<div id="editor" class="modal hide">
+  <div class="mbar"><button id="edClose">✕</button><span id="edTitle">Edit photo</span><button class="primary" id="edSend">Send ➤</button></div>
+  <div id="edStage"><div id="edWrap"><canvas id="edCv"></canvas>
+    <div id="cropBox"><i data-c="nw"></i><i data-c="ne"></i><i data-c="sw"></i><i data-c="se"></i><i data-c="n"></i><i data-c="s"></i><i data-c="w"></i><i data-c="e"></i></div>
+  </div></div>
+  <div id="edNav" class="hide"><button id="edPrev" aria-label="Previous photo">‹</button><span id="edCount"></span><button id="edNext" aria-label="Next photo">›</button></div>
+  <div id="edTabs"><button data-t="crop" class="on">✂ Crop</button><button data-t="adj">🎨 Adjust</button><button data-t="adv">⚙ Advanced</button></div>
+  <div id="edPanel">
+    <div id="pCrop">
+      <div class="chips" id="edRatios">
+        <button data-r="free" class="on">Free</button><button data-r="orig">Original</button><button data-r="1:1">1:1</button><button data-r="4:3">4:3</button><button data-r="3:4">3:4</button><button data-r="3:2">3:2</button><button data-r="16:9">16:9</button>
+      </div>
+      <div class="row"><button id="edRotL">⟲ Rotate</button><button id="edRotR">⟳ Rotate</button><button id="edFlip">⇋ Flip</button><button id="edResetCrop">Reset crop</button></div>
+    </div>
+    <div id="pAdj" class="hide">
+      <div class="rng"><span>Brightness</span><input type="range" id="edB" min="50" max="150" value="100"><span class="v" id="edBv">100</span></div>
+      <div class="rng"><span>Contrast</span><input type="range" id="edC" min="50" max="150" value="100"><span class="v" id="edCv2">100</span></div>
+      <div class="rng"><span>Saturation</span><input type="range" id="edS" min="0" max="200" value="100"><span class="v" id="edSv">100</span></div>
+      <label class="chk"><input type="checkbox" id="edBW"> Black &amp; white</label>
+      <div class="row"><button id="edResetAdj">Reset adjustments</button></div>
+    </div>
+    <div id="pAdv" class="hide">
+      <div class="sec" style="margin-top:2px">Output size (longest side)</div>
+      <div class="chips" id="edMax"><button data-m="orig" class="on">Original</button><button data-m="2400">2400</button><button data-m="1600">1600</button><button data-m="1024">1024</button><button data-m="640">640</button></div>
+      <div class="rng"><span>JPEG quality</span><input type="range" id="edQ" min="50" max="100" value="92"><span class="v" id="edQv">92</span></div>
+      <label class="chk"><input type="checkbox" id="edDl"> Also save a copy on this phone</label>
+      <div class="muted" id="edInfo" style="margin-top:8px"></div>
+      <div class="muted" style="margin-top:6px">Edited photos are sent as a new file (name ends with _edit). If the original hasn’t been sent yet, it is replaced.</div>
+    </div>
+  </div>
+</div>
+<input type="file" id="qrImg" accept="image/*">
 <input type="file" id="fApp" accept="image/*" capture="environment">
 <input type="file" id="fGal" accept="image/*" multiple>
 <canvas id="cv" class="hide"></canvas>
@@ -160,7 +244,8 @@
 (() => {
   const $ = id => document.getElementById(id);
   const sleep = ms => new Promise(r => setTimeout(r, ms));
-  const cfg = () => ({ url: (localStorage.getItem('pt_url') || '').replace(/\/+$/, ''), key: localStorage.getItem('pt_key') || '', bucket: localStorage.getItem('pt_bucket') || 'photos' });
+  const DEFAULT_CFG = { url: 'https://fhtpagfnshficnwkuqpm.supabase.co', key: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZodHBhZ2Zuc2hmaWNud2t1cXBtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY4NDI0MjgsImV4cCI6MjA5MjQxODQyOH0.JNc21vGciJ6Z3p6Mn8QeDXI8l1Gr9GUK-sEQo-V7WiQ', bucket: 'photos' };
+  const cfg = () => ({ url: (localStorage.getItem('pt_url') || DEFAULT_CFG.url).replace(/\/+$/, ''), key: localStorage.getItem('pt_key') || DEFAULT_CFG.key, bucket: localStorage.getItem('pt_bucket') || DEFAULT_CFG.bucket });
   const hdr = (x = {}) => { const c = cfg(); return { apikey: c.key, Authorization: 'Bearer ' + c.key, ...x }; };
   const hasCfg = () => { const c = cfg(); return !!(c.url && c.key); };
   function setBar(t, cls) { const b = $('bar'); b.textContent = t; b.className = cls || ''; }
@@ -255,7 +340,7 @@
   $('btnCam').onclick = () => { stream ? stopCam(false) : startCam(); };
   $('btnFlip').onclick = () => { facing = facing === 'environment' ? 'user' : 'environment'; if (stream) startCam(); };
   $('btnTorch').onclick = async () => { try { const t = stream.getVideoTracks()[0], on = !t.__torch; await t.applyConstraints({ advanced: [{ torch: on }] }); t.__torch = on; } catch (e) { camMsg('Torch not supported.'); } };
-  document.addEventListener('visibilitychange', () => { if (document.hidden) { if (stream) stopCam(true); } else if (camWanted && !stream && !$('phoneView').classList.contains('hide')) startCam(); });
+  document.addEventListener('visibilitychange', () => { if (document.hidden) { if (stream) stopCam(true); } else if (camWanted && !stream && !$('phoneView').classList.contains('hide') && !modalOpen()) startCam(); });
   function snap() {
     const w0 = video.videoWidth, h0 = video.videoHeight; if (!w0 || !h0) { toast('Camera not ready yet.'); return; }
     let c = cropRect(w0, h0);
@@ -283,13 +368,14 @@
     const bmp = await createImageBitmap(blob), cv = $('cv'), sc = Math.min(1, 2400 / Math.max(bmp.width, bmp.height)); cv.width = Math.round(bmp.width * sc); cv.height = Math.round(bmp.height * sc); cv.getContext('2d').drawImage(bmp, 0, 0, cv.width, cv.height);
     return new Promise((res, rej) => cv.toBlob(b => b ? res(b) : rej(new Error('encode failed')), 'image/jpeg', 0.9));
   }
-  const S = {}, sendQ = []; let active = 0, lastKey = '';
+  const S = {}, sendQ = [], order = []; let active = 0, lastKey = '';
+  const modalOpen = () => !!document.querySelector('.modal:not(.hide)');
   function newName() {
     const d = new Date(), p = n => String(n).padStart(2, '0');
     return `photo_${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}_${Math.random().toString(36).slice(2, 5)}.jpg`;
   }
   function onCapture(blob, name) {
-    name = name || newName(); S[name] = { st: 'queued', blob, thumb: URL.createObjectURL(blob), err: '' }; lastKey = name; dbPut({ id: name, blob, ts: Date.now() }); sendQ.push(name); renderAll(); pump();
+    name = name || newName(); S[name] = { st: 'queued', blob, thumb: URL.createObjectURL(blob), err: '' }; lastKey = name; if (!order.includes(name)) order.push(name); dbPut({ id: name, blob, ts: Date.now() }); sendQ.push(name); renderAll(); pump();
   }
   function pump() {
     while (active < 2 && sendQ.length) { const k = sendQ.shift(), e = S[k]; if (!e || e.st === 'sent' || e.st === 'sending') continue; active++; send(k).finally(() => { active--; pump(); }); }
@@ -343,7 +429,218 @@
   }
   $('btnSync').onclick = syncNow;
   setInterval(() => { if (dirHandle && !$('pcView').classList.contains('hide')) syncNow(); }, 10000);
+  /* ---------- QR setup: scan + show ---------- */
+  const loadScript = src => new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = () => rej(new Error('Could not load QR library (check internet)')); document.head.appendChild(s); });
+  let jsqrP = null, qrgenP = null;
+  const needJsQR = () => window.jsQR ? Promise.resolve() : (jsqrP = jsqrP || loadScript('https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js').catch(e => { jsqrP = null; throw e; }));
+  const needQrGen = () => window.qrcode ? Promise.resolve() : (qrgenP = qrgenP || loadScript('https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js').catch(e => { qrgenP = null; throw e; }));
+  function parseCfg(txt) {
+    txt = String(txt || '').trim(); let o = null;
+    try {
+      if (txt.startsWith('PTCFG:')) o = JSON.parse(txt.slice(6));
+      else if (txt.includes('#cfg=')) o = JSON.parse(atob(decodeURIComponent(txt.split('#cfg=')[1])));
+      else if (txt[0] === '{') o = JSON.parse(txt);
+    } catch (e) { o = null; }
+    if (!o) return null;
+    const url = String(o.u || o.url || '').trim(), key = String(o.k || o.key || '').trim(), bucket = String(o.b || o.bucket || 'photos').trim() || 'photos';
+    return /^https?:\/\//.test(url) && key ? { url, key, bucket } : null;
+  }
+  function applyCfg(o) {
+    localStorage.setItem('pt_url', o.url); localStorage.setItem('pt_key', o.key); localStorage.setItem('pt_bucket', o.bucket);
+    $('sbUrl').value = o.url; $('sbKey').value = o.key; $('sbBucket').value = o.bucket; refreshBar(); toast('Settings imported from QR ✓');
+  }
+  const qr = { stream: null, timer: 0, on: false, det: null, resume: false }, qc = document.createElement('canvas');
+  async function decodeQr(src, w, h, max) {
+    if (qr.det) { const r = await qr.det.detect(src); return r[0] ? r[0].rawValue : ''; }
+    const k = Math.min(1, max / Math.max(w, h)); qc.width = Math.max(1, Math.round(w * k)); qc.height = Math.max(1, Math.round(h * k));
+    const x = qc.getContext('2d', { willReadFrequently: true }); x.drawImage(src, 0, 0, qc.width, qc.height);
+    const d = x.getImageData(0, 0, qc.width, qc.height), code = window.jsQR && window.jsQR(d.data, d.width, d.height, { inversionAttempts: 'attemptBoth' });
+    return code ? code.data : '';
+  }
+  async function pickDetector() {
+    qr.det = null;
+    if ('BarcodeDetector' in window) { try { const f = await BarcodeDetector.getSupportedFormats(); if (f.includes('qr_code')) qr.det = new BarcodeDetector({ formats: ['qr_code'] }); } catch (e) {} }
+    if (!qr.det) await needJsQR();
+  }
+  function handleQr(txt) {
+    const o = parseCfg(txt);
+    if (!o) { $('qrMsg').textContent = 'That QR is not a Photo Transfer setup code. Try again.'; return false; }
+    applyCfg(o); closeScan(); return true;
+  }
+  async function openScan() {
+    qr.resume = !!stream; if (stream) stopCam(true);
+    closeSheet(); $('qrScan').classList.remove('hide'); $('qrMsg').textContent = 'Starting camera…';
+    try {
+      await pickDetector();
+      if (!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)) throw new Error('Live camera needs https. Use “From image”.');
+      qr.stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false });
+      const v = $('qrVideo'); v.srcObject = qr.stream; await v.play(); qr.on = true; $('qrMsg').textContent = 'Point the camera at the setup QR.'; scanLoop();
+    } catch (e) { $('qrMsg').textContent = 'Camera unavailable: ' + (e.message || e.name) + '. You can still use “From image”.'; }
+  }
+  async function scanLoop() {
+    if (!qr.on) return; const v = $('qrVideo');
+    try { if (v.readyState >= 2 && v.videoWidth) { const t = await decodeQr(v, v.videoWidth, v.videoHeight, 640); if (t && handleQr(t)) return; } } catch (e) {}
+    qr.timer = setTimeout(scanLoop, 160);
+  }
+  function closeScan() {
+    qr.on = false; clearTimeout(qr.timer); if (qr.stream) { qr.stream.getTracks().forEach(t => t.stop()); qr.stream = null; } $('qrVideo').srcObject = null;
+    $('qrScan').classList.add('hide'); if (qr.resume && !$('phoneView').classList.contains('hide') && !modalOpen()) startCam(); qr.resume = false;
+  }
+  $('btnScanQr').onclick = openScan; $('qrClose').onclick = closeScan; $('qrFile').onclick = () => { $('qrImg').value = ''; $('qrImg').click(); };
+  $('qrImg').onchange = async e => {
+    const f = (e.target.files || [])[0]; if (!f) return; $('qrMsg').textContent = 'Reading image…';
+    try {
+      await pickDetector(); const bmp = await loadBitmap(f); let t = '';
+      try { t = await decodeQr(bmp, bmp.width, bmp.height, 1400); } catch (x) {}
+      if (!t && !qr.det) t = await decodeQr(bmp, bmp.width, bmp.height, 700);
+      if (!t) { $('qrMsg').textContent = 'No QR code found in that image.'; return; } handleQr(t);
+    } catch (x) { $('qrMsg').textContent = 'Could not read image: ' + x.message; }
+  };
+  async function showQr() {
+    if (!hasCfg()) { toast('Enter and save settings first.'); return; }
+    $('qrShow').classList.remove('hide'); $('qrShowMsg').textContent = 'Generating…';
+    try {
+      await needQrGen(); const c = cfg(), q = window.qrcode(0, 'L'); q.addData('PTCFG:' + JSON.stringify({ u: c.url, k: c.key, b: c.bucket })); q.make();
+      const n = q.getModuleCount(), sc = Math.max(4, Math.floor(720 / (n + 8))), pad = 4 * sc, size = n * sc + pad * 2, cv = $('qrCv'); cv.width = cv.height = size;
+      const x = cv.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, size, size); x.fillStyle = '#000';
+      for (let r = 0; r < n; r++) for (let k = 0; k < n; k++) if (q.isDark(r, k)) x.fillRect(pad + k * sc, pad + r * sc, sc, sc);
+      $('qrShowMsg').textContent = 'Scan this from the other device (⚙ → Scan setup QR). It contains your Supabase key, so don’t share a screenshot of it.';
+    } catch (e) { $('qrShowMsg').textContent = 'Could not make the QR: ' + e.message; }
+  }
+  $('btnShowQr').onclick = showQr; $('qrShowClose').onclick = () => $('qrShow').classList.add('hide');
+
+  /* ---------- Photo editor ---------- */
+  async function loadBitmap(blob) {
+    try { return await createImageBitmap(blob, { imageOrientation: 'from-image' }); }
+    catch (e) {
+      const im = await new Promise((res, rej) => { const u = URL.createObjectURL(blob), i = new Image(); i.onload = () => { res(i); }; i.onerror = () => rej(new Error('unsupported image')); i.src = u; });
+      const c = document.createElement('canvas'); c.width = im.naturalWidth; c.height = im.naturalHeight; c.getContext('2d').drawImage(im, 0, 0); return c;
+    }
+  }
+  const FILTER_OK = (() => { try { const c = document.createElement('canvas'); c.width = c.height = 1; const x = c.getContext('2d'); x.filter = 'grayscale(1)'; x.fillStyle = '#f00'; x.fillRect(0, 0, 1, 1); const d = x.getImageData(0, 0, 1, 1).data; return d[0] === d[1]; } catch (e) { return false; } })();
+  const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+  const ED = { key: null, src: null, prev: null, rot: 0, flip: false, crop: { x: 0, y: 0, w: 1, h: 1 }, ratio: 'free', b: 100, c: 100, s: 100, bw: false, max: 'orig', q: 92, busy: false, resume: false };
+  const tdims = () => ED.rot % 2 ? [ED.src.height, ED.src.width] : [ED.src.width, ED.src.height];
+  const cssFilter = () => `brightness(${ED.b}%) contrast(${ED.c}%) saturate(${ED.s}%)` + (ED.bw ? ' grayscale(1)' : '');
+  const neutral = () => ED.b === 100 && ED.c === 100 && ED.s === 100 && !ED.bw;
+  function drawT(ctx, img, W, H) {
+    ctx.save(); ctx.translate(W / 2, H / 2); ctx.rotate(ED.rot * Math.PI / 2); if (ED.flip) ctx.scale(-1, 1);
+    const odd = ED.rot % 2 === 1, dw = odd ? H : W, dh = odd ? W : H; ctx.drawImage(img, -dw / 2, -dh / 2, dw, dh); ctx.restore();
+  }
+  function ratioVal() { if (ED.ratio === 'free') return null; if (ED.ratio === 'orig') { const [tw, th] = tdims(); return tw / th; } const [a, b] = ED.ratio.split(':').map(Number); return a / b; }
+  function drawPreview() {
+    if (!ED.src) return; const st = $('edStage'), aw = st.clientWidth - 20, ah = st.clientHeight - 20; if (aw <= 0 || ah <= 0) return;
+    const [tw, th] = tdims(), k = Math.min(aw / tw, ah / th), dw = Math.max(20, Math.round(tw * k)), dh = Math.max(20, Math.round(th * k)), cv = $('edCv');
+    cv.width = dw; cv.height = dh; const x = cv.getContext('2d'); x.clearRect(0, 0, dw, dh); drawT(x, ED.prev, dw, dh);
+    $('edWrap').style.width = dw + 'px'; $('edWrap').style.height = dh + 'px'; cv.style.filter = cssFilter(); placeCrop();
+  }
+  function placeCrop() {
+    const c = ED.crop, b = $('cropBox'); b.style.left = c.x * 100 + '%'; b.style.top = c.y * 100 + '%'; b.style.width = c.w * 100 + '%'; b.style.height = c.h * 100 + '%';
+    b.classList.toggle('locked', ED.ratio !== 'free'); updateInfo();
+  }
+  function outDims() {
+    const [tw, th] = tdims(), c = ED.crop, cw = Math.max(1, Math.round(c.w * tw)), ch = Math.max(1, Math.round(c.h * th)), sc = ED.max === 'orig' ? 1 : Math.min(1, ED.max / Math.max(cw, ch));
+    return { cw, ch, sc, ow: Math.max(1, Math.round(cw * sc)), oh: Math.max(1, Math.round(ch * sc)), cx: Math.round(c.x * tw), cy: Math.round(c.y * th), tw, th };
+  }
+  function updateInfo() {
+    if (!ED.src) return; const d = outDims(), e = S[ED.key];
+    $('edInfo').textContent = `Output: ${d.ow} × ${d.oh} px · Original: ${ED.src.width} × ${ED.src.height}` + (e ? `, ${(e.blob.size / 1e6).toFixed(1)} MB` : '');
+  }
+  function setRatio(r) {
+    ED.ratio = r; document.querySelectorAll('#edRatios button').forEach(b => b.classList.toggle('on', b.dataset.r === r));
+    const ar = ratioVal(); if (ar) {
+      const [tw, th] = tdims(), c = ED.crop, cwp = c.w * tw, chp = c.h * th; let wp, hp;
+      if (cwp / chp > ar) { hp = chp; wp = hp * ar; } else { wp = cwp; hp = wp / ar; }
+      const w = wp / tw, h = hp / th; ED.crop = { x: c.x + (c.w - w) / 2, y: c.y + (c.h - h) / 2, w, h };
+    }
+    placeCrop();
+  }
+  function resetCrop() { ED.crop = { x: 0, y: 0, w: 1, h: 1 }; setRatio(ED.ratio); }
+  let drag = null; const cbx = $('cropBox');
+  cbx.addEventListener('pointerdown', e => { drag = { c: e.target.dataset.c || 'move', sx: e.clientX, sy: e.clientY, s: { ...ED.crop }, id: e.pointerId }; cbx.setPointerCapture(e.pointerId); e.preventDefault(); });
+  cbx.addEventListener('pointermove', e => {
+    if (!drag || e.pointerId !== drag.id) return;
+    const wrap = $('edWrap'), rw = wrap.clientWidth || 1, rh = wrap.clientHeight || 1, dx = (e.clientX - drag.sx) / rw, dy = (e.clientY - drag.sy) / rh, s = drag.s, MIN = 0.06, c = drag.c;
+    let x = s.x, y = s.y, w = s.w, h = s.h;
+    if (c === 'move') { x = clamp(s.x + dx, 0, 1 - s.w); y = clamp(s.y + dy, 0, 1 - s.h); }
+    else if (ED.ratio !== 'free' && c.length === 2) {
+      const [tw, th] = tdims(), k = tw / (th * ratioVal()), east = c.includes('e'), south = c.includes('s');
+      const ax = east ? s.x : s.x + s.w, ay = south ? s.y : s.y + s.h, nx = clamp((east ? s.x + s.w : s.x) + dx, 0, 1), ny = clamp((south ? s.y + s.h : s.y) + dy, 0, 1);
+      const availW = east ? 1 - ax : ax, availH = south ? 1 - ay : ay;
+      w = Math.min(Math.max(Math.abs(nx - ax), Math.abs(ny - ay) / k, MIN), availW, availH / k); h = w * k; x = east ? ax : ax - w; y = south ? ay : ay - h;
+    } else if (ED.ratio === 'free') {
+      let x1 = s.x, y1 = s.y, x2 = s.x + s.w, y2 = s.y + s.h;
+      if (c.includes('w')) x1 = clamp(s.x + dx, 0, x2 - MIN); if (c.includes('e')) x2 = clamp(s.x + s.w + dx, x1 + MIN, 1);
+      if (c.includes('n')) y1 = clamp(s.y + dy, 0, y2 - MIN); if (c.includes('s')) y2 = clamp(s.y + s.h + dy, y1 + MIN, 1);
+      x = x1; y = y1; w = x2 - x1; h = y2 - y1;
+    }
+    ED.crop = { x, y, w, h }; placeCrop();
+  });
+  for (const t of ['pointerup', 'pointercancel']) cbx.addEventListener(t, e => { if (drag && e.pointerId === drag.id) drag = null; });
+  async function openEditor(key) {
+    const e = S[key]; if (!e) return; let bmp;
+    try { bmp = await loadBitmap(e.blob); } catch (x) { toast('Cannot open this photo.'); return; }
+    if (!ED.src) { ED.resume = !!stream; if (stream) stopCam(true); }
+    ED.key = key; ED.src = bmp; ED.rot = 0; ED.flip = false; ED.crop = { x: 0, y: 0, w: 1, h: 1 };
+    const k = Math.min(1, 1400 / Math.max(bmp.width, bmp.height)), pv = document.createElement('canvas'); pv.width = Math.round(bmp.width * k); pv.height = Math.round(bmp.height * k); pv.getContext('2d').drawImage(bmp, 0, 0, pv.width, pv.height); ED.prev = pv;
+    $('editor').classList.remove('hide'); const i = order.indexOf(key); $('edNav').classList.toggle('hide', order.length < 2); $('edCount').textContent = (i + 1) + ' / ' + order.length;
+    $('edTitle').textContent = 'Edit photo'; setRatio(ED.ratio); requestAnimationFrame(drawPreview);
+  }
+  function closeEditor() {
+    $('editor').classList.add('hide'); ED.src = null; ED.prev = null; ED.key = null;
+    if (ED.resume && !$('phoneView').classList.contains('hide') && !modalOpen()) startCam(); ED.resume = false;
+  }
+  $('slotLast').onclick = () => { if (S[lastKey]) openEditor(lastKey); else toast('Take a photo first.'); };
+  $('edClose').onclick = closeEditor;
+  $('edPrev').onclick = () => { const i = order.indexOf(ED.key); if (i > 0) openEditor(order[i - 1]); };
+  $('edNext').onclick = () => { const i = order.indexOf(ED.key); if (i >= 0 && i < order.length - 1) openEditor(order[i + 1]); };
+  window.addEventListener('resize', () => { if (ED.src) drawPreview(); }); window.addEventListener('orientationchange', () => setTimeout(() => { if (ED.src) drawPreview(); }, 250));
+  document.querySelectorAll('#edTabs button').forEach(b => b.onclick = () => {
+    document.querySelectorAll('#edTabs button').forEach(x => x.classList.toggle('on', x === b));
+    $('pCrop').classList.toggle('hide', b.dataset.t !== 'crop'); $('pAdj').classList.toggle('hide', b.dataset.t !== 'adj'); $('pAdv').classList.toggle('hide', b.dataset.t !== 'adv');
+  });
+  document.querySelectorAll('#edRatios button').forEach(b => b.onclick = () => setRatio(b.dataset.r));
+  const turn = d => { ED.rot = (ED.rot + d + 4) % 4; resetCrop(); drawPreview(); };
+  $('edRotL').onclick = () => turn(-1); $('edRotR').onclick = () => turn(1);
+  $('edFlip').onclick = () => { ED.flip = !ED.flip; drawPreview(); };
+  $('edResetCrop').onclick = () => { ED.ratio = 'free'; resetCrop(); };
+  const sl = (id, vid, key) => $(id).oninput = e => { ED[key] = Number(e.target.value); $(vid).textContent = e.target.value; $('edCv').style.filter = cssFilter(); };
+  sl('edB', 'edBv', 'b'); sl('edC', 'edCv2', 'c'); sl('edS', 'edSv', 's'); sl('edQ', 'edQv', 'q');
+  $('edBW').onchange = e => { ED.bw = e.target.checked; $('edCv').style.filter = cssFilter(); };
+  $('edResetAdj').onclick = () => { ED.b = ED.c = ED.s = 100; ED.bw = false; $('edB').value = $('edC').value = $('edS').value = 100; $('edBv').textContent = $('edCv2').textContent = $('edSv').textContent = '100'; $('edBW').checked = false; $('edCv').style.filter = cssFilter(); };
+  document.querySelectorAll('#edMax button').forEach(b => b.onclick = () => { ED.max = b.dataset.m === 'orig' ? 'orig' : Number(b.dataset.m); document.querySelectorAll('#edMax button').forEach(x => x.classList.toggle('on', x === b)); updateInfo(); });
+  function pixelFilter(cv) {
+    const x = cv.getContext('2d'), im = x.getImageData(0, 0, cv.width, cv.height), d = im.data, b = ED.b / 100, c = ED.c / 100, s = ED.s / 100;
+    for (let i = 0; i < d.length; i += 4) {
+      let r = (d[i] * b - 128) * c + 128, g = (d[i + 1] * b - 128) * c + 128, bl = (d[i + 2] * b - 128) * c + 128; const l = 0.2126 * r + 0.7152 * g + 0.0722 * bl;
+      if (ED.bw) { r = g = bl = l; } else { r = l + (r - l) * s; g = l + (g - l) * s; bl = l + (bl - l) * s; } d[i] = r; d[i + 1] = g; d[i + 2] = bl;
+    }
+    x.putImageData(im, 0, 0);
+  }
+  function exportEdit() {
+    const d = outDims(), cv = document.createElement('canvas'); cv.width = d.ow; cv.height = d.oh; const x = cv.getContext('2d');
+    if (FILTER_OK && !neutral()) x.filter = cssFilter();
+    x.save(); x.translate(-d.cx * d.sc, -d.cy * d.sc); drawT(x, ED.src, d.tw * d.sc, d.th * d.sc); x.restore();
+    if (!FILTER_OK && !neutral()) pixelFilter(cv);
+    return new Promise((res, rej) => cv.toBlob(b => b ? res(b) : rej(new Error('encode failed')), 'image/jpeg', ED.q / 100));
+  }
+  function dropEntry(k) {
+    const e = S[k]; if (!e) return; try { URL.revokeObjectURL(e.thumb); } catch (x) {} delete S[k]; dbDel(k);
+    const i = order.indexOf(k); if (i >= 0) order.splice(i, 1); const j = sendQ.indexOf(k); if (j >= 0) sendQ.splice(j, 1); if (lastKey === k) lastKey = order[order.length - 1] || '';
+  }
+  $('edSend').onclick = async () => {
+    if (ED.busy || !ED.src) return; if (!hasCfg()) { toast('Enter Supabase settings first.'); return; }
+    ED.busy = true; $('edSend').textContent = '…';
+    try {
+      const blob = await exportEdit(), orig = S[ED.key], name = newName().replace('.jpg', '_edit.jpg');
+      if ($('edDl').checked) { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000); }
+      const replaced = orig && (orig.st === 'queued' || orig.st === 'fail'); if (replaced) dropEntry(ED.key);
+      onCapture(blob, name); closeEditor(); toast(replaced ? 'Edited photo replaces the unsent original.' : 'Edited photo queued to send.');
+    } catch (e) { toast('Could not export: ' + e.message); }
+    ED.busy = false; $('edSend').textContent = 'Send ➤';
+  };
   async function init() {
+    if (location.hash.startsWith('#cfg=')) { const o = parseCfg(location.href); if (o) applyCfg(o); try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {} }
     renderChips(); layoutCam(); refreshBar(); if (!hasCfg()) sheet.classList.remove('hide');
     const old = await dbAll(), DAY = 24 * 3600 * 1000;
     for (const r of old) { if (Date.now() - r.ts > DAY) dbDel(r.id); else onCapture(r.blob, r.id); }
