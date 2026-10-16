@@ -180,8 +180,9 @@
     </div>
     <div class="sec">Photo size</div>
     <div class="chips" id="sizeChips">
-      <button data-s="actual">Actual size</button><button data-s="reduced">Reduced</button>
+      <button data-s="actual">Maximum</button><button data-s="reduced">Reduced</button>
     </div>
+    <div class="muted" style="margin-top:6px">Maximum keeps the camera's full still resolution (12 MP or more on most phones) and saves JPEG at quality 95. Reduced is faster and smaller.</div>
     <div class="sec">Zoom</div>
     <div class="zoomrow hide" id="zoomRow">
       <button class="zb" id="zOut" aria-label="Zoom out">−</button>
@@ -228,8 +229,8 @@
     </div>
     <div id="pAdv" class="hide">
       <div class="sec" style="margin-top:2px">Output size (longest side)</div>
-      <div class="chips" id="edMax"><button data-m="orig" class="on">Original</button><button data-m="2400">2400</button><button data-m="1600">1600</button><button data-m="1024">1024</button><button data-m="640">640</button></div>
-      <div class="rng"><span>JPEG quality</span><input type="range" id="edQ" min="50" max="100" value="92"><span class="v" id="edQv">92</span></div>
+      <div class="chips" id="edMax"><button data-m="orig" class="on">Original</button><button data-m="3200">3200</button><button data-m="2400">2400</button><button data-m="1600">1600</button><button data-m="1024">1024</button><button data-m="640">640</button></div>
+      <div class="rng"><span>JPEG quality</span><input type="range" id="edQ" min="50" max="100" value="95"><span class="v" id="edQv">95</span></div>
       <label class="chk"><input type="checkbox" id="edDl"> Also save a copy on this phone</label>
       <div class="muted" id="edInfo" style="margin-top:8px"></div>
       <div class="muted" style="margin-top:6px">Edited photos are sent as a new file (name ends with _edit). If the original hasn’t been sent yet, it is replaced.</div>
@@ -321,19 +322,67 @@
   cb.addEventListener('pointermove', e => { if (!pts.has(e.pointerId)) return; pts.set(e.pointerId, { x: e.clientX, y: e.clientY }); if (pts.size === 2) setZoom(pinchZ * dist() / pinchD); });
   for (const t of ['pointerup', 'pointercancel', 'pointerleave']) cb.addEventListener(t, e => pts.delete(e.pointerId));
   function camMsg(t) { $('camMsg').textContent = t || ''; if (t) toast(t); }
+  /* ---------- camera: ask for the biggest mode the device really has ---------- */
+  let ic = null;   // ImageCapture handle: gives full sensor stills instead of a preview frame
+  function buildAttempts(hi) {
+    const AR = { '4:3': 4 / 3, '3:2': 3 / 2, '16:9': 16 / 9 }, ar = AR[ratio];
+    const sizes = hi ? [[4096, 3072], [3840, 2160], [2560, 1920], [1920, 1080], null] : [[1920, 1080], [1280, 720], null];
+    return sizes.map(s => {
+      const v = { facingMode: { ideal: facing } };
+      if (s) { v.width = { ideal: s[0], min: 640 }; v.height = { ideal: s[1], min: 480 }; }
+      if (ar) v.aspectRatio = { ideal: ar };
+      return v;
+    });
+  }
+  async function openStream(hi) {
+    let last = null;
+    for (const v of buildAttempts(hi)) {
+      try { return await navigator.mediaDevices.getUserMedia({ video: v, audio: false }); }
+      catch (e) { last = e; if (e && (e.name === 'NotAllowedError' || e.name === 'SecurityError' || e.name === 'NotFoundError')) throw e; }
+    }
+    throw last || new Error('camera unavailable');
+  }
+  async function maximiseStream(s) {
+    try {
+      const tr = s.getVideoTracks()[0];
+      if (!tr || !tr.getCapabilities || !tr.getSettings) return s;
+      const caps = tr.getCapabilities(), cur = tr.getSettings();
+      if (!caps.width || !caps.width.max || !caps.height || !caps.height.max) return s;
+      if ((cur.width || 0) >= caps.width.max * 0.98 && (cur.height || 0) >= caps.height.max * 0.98) return s;
+      await tr.applyConstraints({ width: { ideal: caps.width.max }, height: { ideal: caps.height.max } });
+    } catch (e) {}
+    return s;
+  }
+  async function stillFromCamera() {
+    if (!ic) return null;
+    let opts;
+    try {
+      const pc = await ic.getPhotoCapabilities();
+      if (pc && pc.imageWidth && pc.imageWidth.max && pc.imageHeight && pc.imageHeight.max) opts = { imageWidth: pc.imageWidth.max, imageHeight: pc.imageHeight.max };
+    } catch (e) {}
+    const blob = await ic.takePhoto(opts);
+    return await loadBitmap(blob);
+  }
   async function startCam() {
     if (!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)) { camMsg('Live camera needs https. Use “Camera app” instead.'); return false; }
     stopCam(true);
     try {
       const hi = sizeMode === 'actual';
-      stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: facing }, width: { ideal: hi ? 4096 : 1920 }, height: { ideal: hi ? 3072 : 1080 } }, audio: false });
-      video.srcObject = stream; await video.play(); camWanted = true; localStorage.setItem('pt_cam', '1'); $('camPlaceholder').classList.add('hide'); camMsg('');
-      const tr = stream.getVideoTracks()[0], caps = tr && tr.getCapabilities ? tr.getCapabilities() : {}; $('btnTorch').hidden = !caps.torch; setZoomRange(caps);
+      const s = hi ? await maximiseStream(await openStream(true)) : await openStream(false);
+      stream = s; video.srcObject = s;
+      try { await video.play(); } catch (e) {}
+      camWanted = true; localStorage.setItem('pt_cam', '1'); $('camPlaceholder').classList.add('hide');
+      const tr = s.getVideoTracks()[0], caps = tr && tr.getCapabilities ? tr.getCapabilities() : {};
+      $('btnTorch').hidden = !caps.torch; if (tr) tr.__torch = false;
+      ic = null; if (typeof ImageCapture !== 'undefined' && tr) { try { ic = new ImageCapture(tr); } catch (e) { ic = null; } }
+      setZoomRange(caps);
+      const st = tr && tr.getSettings ? tr.getSettings() : {};
+      $('camMsg').textContent = st.width && st.height ? ('Live camera ' + st.width + '×' + st.height + (ic ? ' · full-resolution stills enabled' : '')) : '';
       try { if (navigator.wakeLock) wake = await navigator.wakeLock.request('screen'); } catch (e) {} layoutCam(); return true;
-    } catch (e) { stream = null; $('camPlaceholder').classList.remove('hide'); camMsg('Camera unavailable (' + (e.name || 'error') + '). Allow camera access, or use “Camera app”.'); return false; }
+    } catch (e) { stream = null; ic = null; $('camPlaceholder').classList.remove('hide'); if (e && (e.name === 'NotAllowedError' || e.name === 'SecurityError')) { camWanted = false; localStorage.setItem('pt_cam', '0'); } camMsg('Camera unavailable (' + ((e && (e.name || 'error')) || 'error') + '). Allow camera access, or use “Camera app”.'); return false; }
   }
   function stopCam(silent) {
-    if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; } video.srcObject = null; $('camPlaceholder').classList.remove('hide');
+    if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; } video.srcObject = null; ic = null; $('camPlaceholder').classList.remove('hide');
     $('zoomRow').classList.add('hide'); $('zoomChips').classList.add('hide'); video.style.transform = 'none';
     if (wake) { try { wake.release(); } catch (e) {} wake = null; } if (!silent) { camWanted = false; localStorage.setItem('pt_cam', '0'); }
   }
@@ -341,13 +390,38 @@
   $('btnFlip').onclick = () => { facing = facing === 'environment' ? 'user' : 'environment'; if (stream) startCam(); };
   $('btnTorch').onclick = async () => { try { const t = stream.getVideoTracks()[0], on = !t.__torch; await t.applyConstraints({ advanced: [{ torch: on }] }); t.__torch = on; } catch (e) { camMsg('Torch not supported.'); } };
   document.addEventListener('visibilitychange', () => { if (document.hidden) { if (stream) stopCam(true); } else if (camWanted && !stream && !$('phoneView').classList.contains('hide') && !modalOpen()) startCam(); });
-  function snap() {
-    const w0 = video.videoWidth, h0 = video.videoHeight; if (!w0 || !h0) { toast('Camera not ready yet.'); return; }
-    let c = cropRect(w0, h0);
-    if (!hwZoom && zoom > 1) { const nw = Math.round(c.sw / zoom), nh = Math.round(c.sh / zoom); c = { sx: c.sx + Math.round((c.sw - nw) / 2), sy: c.sy + Math.round((c.sh - nh) / 2), sw: nw, sh: nh }; }
-    const cv = $('cv'), sc = sizeMode === 'actual' ? 1 : Math.min(1, 1600 / Math.max(c.sw, c.sh)); cv.width = Math.round(c.sw * sc); cv.height = Math.round(c.sh * sc);
-    cv.getContext('2d').drawImage(video, c.sx, c.sy, c.sw, c.sh, 0, 0, cv.width, cv.height);
-    cv.toBlob(b => { if (b) onCapture(b, undefined, true); else toast('Could not capture.'); }, 'image/jpeg', sizeMode === 'actual' ? 0.92 : 0.85);
+  let snapping = false;
+  async function snap() {
+    if (snapping) return;
+    const vw = video.videoWidth, vh = video.videoHeight;
+    if (!vw || !vh) { toast('Camera not ready yet.'); return; }
+    snapping = true;
+    let src = null;
+    try {
+      const tr = stream && stream.getVideoTracks()[0];
+      if (!ic && typeof ImageCapture !== 'undefined' && tr) { try { ic = new ImageCapture(tr); } catch (e) { ic = null; } }
+      if (sizeMode === 'actual' && ic) { try { src = await stillFromCamera(); } catch (e) { src = null; } }
+      // A still whose aspect ratio differs from the preview would make the on-screen
+      // framing/crop wrong — in that case fall back to the (aligned) preview frame.
+      if (src) { const w = src.width || src.naturalWidth, h = src.height || src.naturalHeight; if (!w || !h || Math.abs(w / h - vw / vh) > 0.02) { try { src.close && src.close(); } catch (e) {} src = null; } }
+    } catch (e) { src = null; }
+    try {
+      const b = cropRect(vw, vh);
+      let n = { x: b.sx / vw, y: b.sy / vh, w: b.sw / vw, h: b.sh / vh };
+      if (!hwZoom && zoom > 1) { const f = 1 / zoom; n = { x: n.x + n.w * (1 - f) / 2, y: n.y + n.h * (1 - f) / 2, w: n.w * f, h: n.h * f }; }
+      const img = src || video;
+      const W = src ? (src.width || src.naturalWidth) : vw, H = src ? (src.height || src.naturalHeight) : vh;
+      const sx = Math.max(0, Math.min(W - 1, Math.round(n.x * W))), sy = Math.max(0, Math.min(H - 1, Math.round(n.y * H)));
+      const sw = Math.max(1, Math.min(W - sx, Math.round(n.w * W))), sh = Math.max(1, Math.min(H - sy, Math.round(n.h * H)));
+      const cap = sizeMode === 'actual' ? 0 : 1600, sc = cap ? Math.min(1, cap / Math.max(sw, sh)) : 1;
+      const cv = document.createElement('canvas');
+      cv.width = Math.max(1, Math.round(sw * sc)); cv.height = Math.max(1, Math.round(sh * sc));
+      const x = cv.getContext('2d'); x.imageSmoothingEnabled = true; x.imageSmoothingQuality = 'high';
+      x.drawImage(img, sx, sy, sw, sh, 0, 0, cv.width, cv.height);
+      if (src && src.close) { try { src.close(); } catch (e) {} }
+      cv.toBlob(b2 => { if (b2) onCapture(b2, undefined, true); else toast('Could not capture.'); }, 'image/jpeg', sizeMode === 'actual' ? 0.95 : 0.9);
+    } catch (e) { toast('Capture failed: ' + (e.message || e.name)); }
+    finally { snapping = false; }
   }
   function feedback() { const f = $('flash'); f.classList.remove('on'); void f.offsetWidth; f.classList.add('on'); try { navigator.vibrate && navigator.vibrate(25); } catch (e) {} }
   $('shutter').onclick = () => { if (!hasCfg()) { sheet.classList.remove('hide'); toast('Enter Supabase settings first.'); return; } if (stream) { feedback(); snap(); } else $('fApp').click(); };
@@ -358,14 +432,23 @@
     if (!RATIOS[ratio] && sizeMode === 'actual' && file.type === 'image/jpeg') return file;
     let bmp;
     try { bmp = await createImageBitmap(file, { imageOrientation: 'from-image' }); }
-    catch (e) { bmp = await new Promise((res, rej) => { const u = URL.createObjectURL(file), im = new Image(); im.onload = () => res(im); im.onerror = rej; im.src = u; }); }
-    const w0 = bmp.width || bmp.naturalWidth, h0 = bmp.height || bmp.naturalHeight, c = cropRect(w0, h0), cv = $('cv');
-    const sc = sizeMode === 'actual' ? 1 : Math.min(1, 1600 / Math.max(c.sw, c.sh)); cv.width = Math.round(c.sw * sc); cv.height = Math.round(c.sh * sc);
-    cv.getContext('2d').drawImage(bmp, c.sx, c.sy, c.sw, c.sh, 0, 0, cv.width, cv.height);
-    return new Promise((res, rej) => cv.toBlob(b => b ? res(b) : rej(new Error('encode failed')), 'image/jpeg', sizeMode === 'actual' ? 0.92 : 0.85));
+    catch (e) { bmp = await new Promise((res, rej) => { const u = URL.createObjectURL(file), im = new Image(); im.onload = () => { URL.revokeObjectURL(u); res(im); }; im.onerror = rej; im.src = u; }); }
+    const w0 = bmp.width || bmp.naturalWidth, h0 = bmp.height || bmp.naturalHeight, c = cropRect(w0, h0);
+    const sc = sizeMode === 'actual' ? 1 : Math.min(1, 1600 / Math.max(c.sw, c.sh));
+    const cv = document.createElement('canvas');
+    cv.width = Math.max(1, Math.round(c.sw * sc)); cv.height = Math.max(1, Math.round(c.sh * sc));
+    const x = cv.getContext('2d'); x.imageSmoothingEnabled = true; x.imageSmoothingQuality = 'high';
+    x.drawImage(bmp, c.sx, c.sy, c.sw, c.sh, 0, 0, cv.width, cv.height);
+    if (bmp.close) { try { bmp.close(); } catch (e) {} }
+    return new Promise((res, rej) => cv.toBlob(b => b ? res(b) : rej(new Error('encode failed')), 'image/jpeg', sizeMode === 'actual' ? 0.95 : 0.9));
   }
   async function reduceBlob(blob) {
-    const bmp = await createImageBitmap(blob), cv = $('cv'), sc = Math.min(1, 2400 / Math.max(bmp.width, bmp.height)); cv.width = Math.round(bmp.width * sc); cv.height = Math.round(bmp.height * sc); cv.getContext('2d').drawImage(bmp, 0, 0, cv.width, cv.height);
+    const bmp = await createImageBitmap(blob), sc = Math.min(1, 2560 / Math.max(bmp.width, bmp.height));
+    const cv = document.createElement('canvas');
+    cv.width = Math.max(1, Math.round(bmp.width * sc)); cv.height = Math.max(1, Math.round(bmp.height * sc));
+    const x = cv.getContext('2d'); x.imageSmoothingEnabled = true; x.imageSmoothingQuality = 'high';
+    x.drawImage(bmp, 0, 0, cv.width, cv.height);
+    if (bmp.close) { try { bmp.close(); } catch (e) {} }
     return new Promise((res, rej) => cv.toBlob(b => b ? res(b) : rej(new Error('encode failed')), 'image/jpeg', 0.9));
   }
   const S = {}, sendQ = [], order = []; let active = 0, lastKey = '';
@@ -374,8 +457,17 @@
     const d = new Date(), p = n => String(n).padStart(2, '0');
     return `photo_${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}_${Math.random().toString(36).slice(2, 5)}.jpg`;
   }
-  function onCapture(blob, name) {
-    name = name || newName(); S[name] = { st: 'queued', blob, thumb: URL.createObjectURL(blob), err: '' }; lastKey = name; if (!order.includes(name)) order.push(name); dbPut({ id: name, blob, ts: Date.now() }); sendQ.push(name); renderAll(); pump();
+  function onCapture(blob, name, editFirst = false) {
+    name = name || newName();
+    S[name] = { st: 'queued', blob, thumb: URL.createObjectURL(blob), err: '', waitingForEdit: !!editFirst };
+    lastKey = name;
+    if (!order.includes(name)) order.push(name);
+    dbPut({ id: name, blob, ts: Date.now() });
+    renderAll();
+    // For camera captures, open the editor before uploading. Closing the editor
+    // without sending keeps the original and allows it to upload normally.
+    if (editFirst) openEditor(name);
+    else { sendQ.push(name); pump(); }
   }
   function pump() {
     while (active < 2 && sendQ.length) { const k = sendQ.shift(), e = S[k]; if (!e || e.st === 'sent' || e.st === 'sending' || e.waitingForEdit) continue; active++; send(k).finally(() => { active--; pump(); }); }
@@ -387,7 +479,7 @@
       const ac = new AbortController(), t = setTimeout(() => ac.abort(), 60000);
       try {
         const resp = await fetch(`${c.url}/storage/v1/object/${c.bucket}/${k}`, { method: 'POST', headers: hdr({ 'Content-Type': 'image/jpeg' }), body: e.blob, signal: ac.signal });
-        if (resp.ok) { e.st = 'sent'; e.err = ''; dbDel(k); renderAll(); return; }
+        if (resp.ok) { e.st = 'sent'; e.err = ''; dbDel(k); pruneSent(k); renderAll(); return; }
         let msg = ''; try { msg = (await resp.json()).message || ''; } catch (x) {} e.err = msg || ('HTTP ' + resp.status);
         if (resp.status === 413 && !e.reduced) { try { e.blob = await reduceBlob(e.blob); e.reduced = true; e.err = ''; attempt--; continue; } catch (x) {} }
         if (resp.status === 400 || resp.status === 401 || resp.status === 403 || resp.status === 409 || resp.status === 413) break;
@@ -401,6 +493,13 @@
   }
   $('btnRetry').onclick = () => { toast(''); for (const [k, e] of Object.entries(S)) if (e.st === 'fail') { e.st = 'queued'; sendQ.push(k); } pump(); };
   window.addEventListener('online', () => $('btnRetry').click());
+  function pruneSent(keep) {
+    for (const [k, e] of Object.entries(S)) {
+      if (e.st !== 'sent' || k === keep || k === lastKey) continue;
+      try { URL.revokeObjectURL(e.thumb); } catch (x) {}
+      delete S[k]; const i = order.indexOf(k); if (i >= 0) order.splice(i, 1);
+    }
+  }
   function renderAll() {
     const all = Object.values(S), sent = all.filter(e => e.st === 'sent').length, pend = all.filter(e => e.st === 'queued' || e.st === 'sending').length, fail = all.filter(e => e.st === 'fail').length;
     $('sendTxt').textContent = !all.length ? 'Nothing sent yet.' : `Sent ${sent}` + (pend ? ` · sending ${pend}…` : '') + (fail ? ` · ${fail} failed` : '');
@@ -603,7 +702,7 @@
   }
   const FILTER_OK = (() => { try { const c = document.createElement('canvas'); c.width = c.height = 1; const x = c.getContext('2d'); x.filter = 'grayscale(1)'; x.fillStyle = '#f00'; x.fillRect(0, 0, 1, 1); const d = x.getImageData(0, 0, 1, 1).data; return d[0] === d[1]; } catch (e) { return false; } })();
   const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
-  const ED = { key: null, src: null, prev: null, rot: 0, flip: false, crop: { x: 0, y: 0, w: 1, h: 1 }, ratio: 'free', b: 100, c: 100, s: 100, bw: false, max: 'orig', q: 92, busy: false, resume: false };
+  const ED = { key: null, src: null, prev: null, rot: 0, flip: false, crop: { x: 0, y: 0, w: 1, h: 1 }, ratio: 'free', b: 100, c: 100, s: 100, bw: false, max: 'orig', q: 95, busy: false, resume: false };
   const tdims = () => ED.rot % 2 ? [ED.src.height, ED.src.width] : [ED.src.width, ED.src.height];
   const cssFilter = () => `brightness(${ED.b}%) contrast(${ED.c}%) saturate(${ED.s}%)` + (ED.bw ? ' grayscale(1)' : '');
   const neutral = () => ED.b === 100 && ED.c === 100 && ED.s === 100 && !ED.bw;
@@ -739,5 +838,6 @@
   init();
 })();
 </script>
+<script type="module" src="https://static.cloudflareinsights.com/beacon.min.js/v4bc70e2c01a94c73b74392e4234840661791215815920" integrity="sha512-L0ha0OXavK/8okipN9F8BtP84dg9DUhPERbBXzwI6dgTA55d2+yweo3pn5CSFYs45/r8md2+xvUPtTdvTNRfjA==" data-cf-beacon='{"version":"2024.11.0","token":"4edd5f8ec12a48cfa682ab8261b80a79","spa":2}' crossorigin="anonymous"></script>
 </body>
 </html>
