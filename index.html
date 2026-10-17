@@ -573,14 +573,7 @@
     mode('pc');
     try { if ((await h.queryPermission({ mode: 'readwrite' })) === 'granted') { await useFolder(h); return; } } catch (e) {}
     pendingHandle = h; $('folderName').textContent = '📁 ' + h.name + ' (saved)'; $('btnPick').textContent = '✅ Allow saved folder: ' + h.name;
-    log('Saved folder found. Click anywhere on this page once to allow access.');
-    const grab = async () => {
-      if (!pendingHandle) return;
-      document.removeEventListener('pointerdown', grab, true);
-      try { if ((await pendingHandle.requestPermission({ mode: 'readwrite' })) === 'granted') await useFolder(pendingHandle); else document.addEventListener('pointerdown', grab, true); }
-      catch (e) { document.addEventListener('pointerdown', grab, true); }
-    };
-    document.addEventListener('pointerdown', grab, true);
+    log('Saved folder found. Tap the button once to allow access.');
   }
   $('btnPick').onclick = async () => {
     if (!window.showDirectoryPicker) { log('This browser cannot save to folders. Use Chrome or Edge on the PC.'); return; }
