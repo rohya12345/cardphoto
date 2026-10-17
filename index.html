@@ -86,8 +86,8 @@
   #qrMsg { flex:none; padding:12px 14px calc(12px + env(safe-area-inset-bottom)); text-align:center; background:#111; font-size:14px; }
   #qrShowBody { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; padding:16px; overflow:auto; }
   #qrCv { background:#fff; border-radius:12px; width:min(88vw,420px); height:auto; image-rendering:pixelated; }
-  #edStage { flex:1; min-height:0; display:flex; align-items:center; justify-content:center; overflow:hidden; padding:10px; touch-action:none; background:#0a0d12; }
-  #edWrap { position:relative; flex:none; }
+  #edStage { flex:1; min-height:0; display:flex; overflow:auto; padding:10px; touch-action:none; overscroll-behavior:contain; background:#0a0d12; }
+  #edWrap { position:relative; flex:none; margin:auto; }
   #edCv { display:block; width:100%; height:100%; }
   #cropBox { position:absolute; border:2px solid #fff; box-shadow:0 0 0 9999px rgba(0,0,0,.55); touch-action:none; cursor:move; }
   #cropBox i { position:absolute; width:32px; height:32px; margin:-16px 0 0 -16px; }
@@ -108,6 +108,12 @@
   .rng .v { width:46px; text-align:right; font-weight:700; }
   .row { display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; }
   .row button { flex:1; padding:9px 6px; font-size:14px; }
+  .zrow { display:flex; align-items:center; gap:8px; margin-bottom:10px; }
+  .zrow .lbl { font-size:14px; font-weight:700; }
+  .zrow input { flex:1; accent-color:#3d6fd1; height:28px; }
+  .zrow button { width:40px; height:40px; padding:0; border-radius:50%; font-size:20px; flex:none; }
+  .zrow button.fit { width:auto; border-radius:16px; padding:0 12px; font-size:13px; }
+  .zrow .v { min-width:46px; text-align:right; font-weight:700; font-size:14px; }
   .modal label.chk { color:#fff; }
 </style>
 </head>
@@ -215,10 +221,12 @@
   <div id="edTabs"><button data-t="crop" class="on">✂ Crop</button><button data-t="adj">🎨 Adjust</button><button data-t="adv">⚙ Advanced</button></div>
   <div id="edPanel">
     <div id="pCrop">
+      <div class="zrow"><span class="lbl">🔍 Zoom</span><button id="edZOut" aria-label="Zoom out">−</button><input type="range" id="edZoom" min="1" max="6" step="0.1" value="1" aria-label="Zoom"><button id="edZIn" aria-label="Zoom in">＋</button><span class="v" id="edZv">1.0×</span><button class="fit" id="edZFit">Fit</button></div>
       <div class="chips" id="edRatios">
         <button data-r="free" class="on">Free</button><button data-r="orig">Original</button><button data-r="1:1">1:1</button><button data-r="4:3">4:3</button><button data-r="3:4">3:4</button><button data-r="3:2">3:2</button><button data-r="16:9">16:9</button>
       </div>
-      <div class="row"><button id="edRotL">⟲ Rotate</button><button id="edRotR">⟳ Rotate</button><button id="edFlip">⇋ Flip</button><button id="edResetCrop">Reset crop</button></div>
+      <div class="row"><button id="edRotL">⟲ Rotate</button><button id="edRotR">⟳ Rotate</button><button id="edFlip">⇋ Flip</button><button id="edResetCrop">Reset crop</button><button id="edDel">🗑 Discard photo</button></div>
+      <div class="muted" style="margin-top:8px">Zoom: pinch with two fingers (or mouse wheel), drag the empty area to move around, then drag the crop corners.</div>
     </div>
     <div id="pAdj" class="hide">
       <div class="rng"><span>Brightness</span><input type="range" id="edB" min="50" max="150" value="100"><span class="v" id="edBv">100</span></div>
@@ -457,17 +465,18 @@
     const d = new Date(), p = n => String(n).padStart(2, '0');
     return `photo_${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}_${Math.random().toString(36).slice(2, 5)}.jpg`;
   }
-  function onCapture(blob, name, editFirst = false) {
+  function onCapture(blob, name, editFirst = false, restoredHeld = false) {
     name = name || newName();
-    S[name] = { st: 'queued', blob, thumb: URL.createObjectURL(blob), err: '', waitingForEdit: !!editFirst };
+    const hold = !!(editFirst || restoredHeld);
+    S[name] = { st: 'queued', blob, thumb: URL.createObjectURL(blob), err: '', waitingForEdit: hold };
     lastKey = name;
     if (!order.includes(name)) order.push(name);
-    dbPut({ id: name, blob, ts: Date.now() });
+    dbPut({ id: name, blob, ts: Date.now(), held: hold });
     renderAll();
-    // For camera captures, open the editor before uploading. Closing the editor
-    // without sending keeps the original and allows it to upload normally.
-    if (editFirst) openEditor(name);
-    else { sendQ.push(name); pump(); }
+    // New photos are HELD (never uploaded) until you press Send in the editor.
+    // Several held photos can be stepped through with the ‹ › arrows.
+    if (editFirst) { if ($('editor').classList.contains('hide')) openEditor(name); }
+    else if (!hold) { sendQ.push(name); pump(); }
   }
   function pump() {
     while (active < 2 && sendQ.length) { const k = sendQ.shift(), e = S[k]; if (!e || e.st === 'sent' || e.st === 'sending' || e.waitingForEdit) continue; active++; send(k).finally(() => { active--; pump(); }); }
@@ -501,10 +510,10 @@
     }
   }
   function renderAll() {
-    const all = Object.values(S), sent = all.filter(e => e.st === 'sent').length, pend = all.filter(e => e.st === 'queued' || e.st === 'sending').length, fail = all.filter(e => e.st === 'fail').length;
-    $('sendTxt').textContent = !all.length ? 'Nothing sent yet.' : `Sent ${sent}` + (pend ? ` · sending ${pend}…` : '') + (fail ? ` · ${fail} failed` : '');
+    const all = Object.values(S), sent = all.filter(e => e.st === 'sent').length, pend = all.filter(e => !e.waitingForEdit && (e.st === 'queued' || e.st === 'sending')).length, held = all.filter(e => e.waitingForEdit).length, fail = all.filter(e => e.st === 'fail').length;
+    $('sendTxt').textContent = !all.length ? 'Nothing sent yet.' : `Sent ${sent}` + (pend ? ` · sending ${pend}…` : '') + (held ? ` · ${held} waiting for edit` : '') + (fail ? ` · ${fail} failed` : '');
     $('btnRetry').classList.toggle('hide', !fail); const e = S[lastKey], slot = $('slotLast'); slot.className = 'slot' + (e ? (e.st === 'sent' ? ' done' : e.st === 'fail' ? ' fail' : '') : '');
-    $('thLast').innerHTML = e ? '<img src="' + e.thumb + '">' : '—'; $('stLast').textContent = !e ? '' : { queued: 'queued', sending: 'sending…', sent: 'sent ✓', fail: 'failed ✗' }[e.st];
+    $('thLast').innerHTML = e ? '<img src="' + e.thumb + '">' : '—'; $('stLast').textContent = !e ? '' : e.waitingForEdit ? 'edit & send ✎' : { queued: 'queued', sending: 'sending…', sent: 'sent ✓', fail: 'failed ✗' }[e.st];
   }
   let dirHandle = null, syncing = false, realtimeClient = null, realtimeChannel = null;
   const downloadedNames = new Set();
@@ -548,14 +557,37 @@
     }
   }
 
+  /* ---------- remember the chosen PC folder ---------- */
+  let pendingHandle = null;
+  const hdb = () => new Promise((res, rej) => { const r = indexedDB.open('pt_pc', 1); r.onupgradeneeded = () => r.result.createObjectStore('handles'); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
+  async function saveHandle(h) { const db = await hdb(); return new Promise((res, rej) => { const tx = db.transaction('handles', 'readwrite'); tx.objectStore('handles').put(h, 'dir'); tx.oncomplete = res; tx.onerror = () => rej(tx.error); }); }
+  async function loadHandle() { try { const db = await hdb(); return await new Promise((res, rej) => { const q = db.transaction('handles').objectStore('handles').get('dir'); q.onsuccess = () => res(q.result || null); q.onerror = () => rej(q.error); }); } catch (e) { return null; } }
+  async function useFolder(h) {
+    dirHandle = h; pendingHandle = null;
+    $('folderName').textContent = '📁 ' + h.name; $('btnPick').textContent = '📁 Change PC folder';
+    log('Folder ready: ' + h.name); await ensureRealtime(); await syncNow();
+  }
+  async function restoreFolder() {
+    if (!window.showDirectoryPicker) return;
+    const h = await loadHandle(); if (!h) return;
+    mode('pc');
+    try { if ((await h.queryPermission({ mode: 'readwrite' })) === 'granted') { await useFolder(h); return; } } catch (e) {}
+    pendingHandle = h; $('folderName').textContent = '📁 ' + h.name + ' (saved)'; $('btnPick').textContent = '✅ Allow saved folder: ' + h.name;
+    log('Saved folder found. Click anywhere on this page once to allow access.');
+    const grab = async () => {
+      if (!pendingHandle) return;
+      document.removeEventListener('pointerdown', grab, true);
+      try { if ((await pendingHandle.requestPermission({ mode: 'readwrite' })) === 'granted') await useFolder(pendingHandle); else document.addEventListener('pointerdown', grab, true); }
+      catch (e) { document.addEventListener('pointerdown', grab, true); }
+    };
+    document.addEventListener('pointerdown', grab, true);
+  }
   $('btnPick').onclick = async () => {
     if (!window.showDirectoryPicker) { log('This browser cannot save to folders. Use Chrome or Edge on the PC.'); return; }
     try {
-      dirHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
-      $('folderName').textContent = '📁 ' + dirHandle.name;
-      log('Folder chosen: ' + dirHandle.name);
-      await ensureRealtime();
-      await syncNow(); // one initial catch-up for photos already present
+      if (pendingHandle) { const p = await pendingHandle.requestPermission({ mode: 'readwrite' }); if (p === 'granted') { await useFolder(pendingHandle); return; } }
+      const h = await window.showDirectoryPicker({ mode: 'readwrite' });
+      await saveHandle(h); await useFolder(h);
     } catch (e) { log('Folder not chosen or access cancelled.'); }
   };
 
@@ -702,7 +734,7 @@
   }
   const FILTER_OK = (() => { try { const c = document.createElement('canvas'); c.width = c.height = 1; const x = c.getContext('2d'); x.filter = 'grayscale(1)'; x.fillStyle = '#f00'; x.fillRect(0, 0, 1, 1); const d = x.getImageData(0, 0, 1, 1).data; return d[0] === d[1]; } catch (e) { return false; } })();
   const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
-  const ED = { key: null, src: null, prev: null, rot: 0, flip: false, crop: { x: 0, y: 0, w: 1, h: 1 }, ratio: 'free', b: 100, c: 100, s: 100, bw: false, max: 'orig', q: 95, busy: false, resume: false };
+  const ED = { key: null, src: null, prev: null, rot: 0, flip: false, crop: { x: 0, y: 0, w: 1, h: 1 }, ratio: 'free', b: 100, c: 100, s: 100, bw: false, max: 'orig', q: 95, busy: false, resume: false, zoom: 1, fw: 1, fh: 1 };
   const tdims = () => ED.rot % 2 ? [ED.src.height, ED.src.width] : [ED.src.width, ED.src.height];
   const cssFilter = () => `brightness(${ED.b}%) contrast(${ED.c}%) saturate(${ED.s}%)` + (ED.bw ? ' grayscale(1)' : '');
   const neutral = () => ED.b === 100 && ED.c === 100 && ED.s === 100 && !ED.bw;
@@ -711,11 +743,18 @@
     const odd = ED.rot % 2 === 1, dw = odd ? H : W, dh = odd ? W : H; ctx.drawImage(img, -dw / 2, -dh / 2, dw, dh); ctx.restore();
   }
   function ratioVal() { if (ED.ratio === 'free') return null; if (ED.ratio === 'orig') { const [tw, th] = tdims(); return tw / th; } const [a, b] = ED.ratio.split(':').map(Number); return a / b; }
+  function sizeWrap() { const w = $('edWrap'); w.style.width = Math.round(ED.fw * ED.zoom) + 'px'; w.style.height = Math.round(ED.fh * ED.zoom) + 'px'; }
+  function paintCanvas() {
+    if (!ED.src) return;
+    const dw = Math.round(ED.fw * ED.zoom), dh = Math.round(ED.fh * ED.zoom), pk = Math.min(1, 2400 / Math.max(dw, dh));
+    const cw = Math.max(1, Math.round(dw * pk)), ch = Math.max(1, Math.round(dh * pk)), cv = $('edCv');
+    cv.width = cw; cv.height = ch; const x = cv.getContext('2d'); x.clearRect(0, 0, cw, ch); drawT(x, ED.prev, cw, ch); cv.style.filter = cssFilter();
+  }
   function drawPreview() {
     if (!ED.src) return; const st = $('edStage'), aw = st.clientWidth - 20, ah = st.clientHeight - 20; if (aw <= 0 || ah <= 0) return;
-    const [tw, th] = tdims(), k = Math.min(aw / tw, ah / th), dw = Math.max(20, Math.round(tw * k)), dh = Math.max(20, Math.round(th * k)), cv = $('edCv');
-    cv.width = dw; cv.height = dh; const x = cv.getContext('2d'); x.clearRect(0, 0, dw, dh); drawT(x, ED.prev, dw, dh);
-    $('edWrap').style.width = dw + 'px'; $('edWrap').style.height = dh + 'px'; cv.style.filter = cssFilter(); placeCrop();
+    const [tw, th] = tdims(), k = Math.min(aw / tw, ah / th);
+    ED.fw = Math.max(20, Math.round(tw * k)); ED.fh = Math.max(20, Math.round(th * k));
+    sizeWrap(); paintCanvas(); placeCrop();
   }
   function placeCrop() {
     const c = ED.crop, b = $('cropBox'); b.style.left = c.x * 100 + '%'; b.style.top = c.y * 100 + '%'; b.style.width = c.w * 100 + '%'; b.style.height = c.h * 100 + '%';
@@ -760,23 +799,51 @@
     ED.crop = { x, y, w, h }; placeCrop();
   });
   for (const t of ['pointerup', 'pointercancel']) cbx.addEventListener(t, e => { if (drag && e.pointerId === drag.id) drag = null; });
+  const stg = $('edStage'), ZMIN = 1, ZMAX = 6; let zRaf = 0;
+  function syncZoomUi() { $('edZoom').value = ED.zoom; $('edZv').textContent = (Math.round(ED.zoom * 10) / 10).toFixed(1) + '×'; }
+  function setEdZoom(z, cx, cy) {
+    if (!ED.src) return; const wrap = $('edWrap'), sr = stg.getBoundingClientRect();
+    if (cx == null) { cx = sr.left + sr.width / 2; cy = sr.top + sr.height / 2; }
+    const wr = wrap.getBoundingClientRect(), fx = (cx - wr.left) / (wr.width || 1), fy = (cy - wr.top) / (wr.height || 1);
+    ED.zoom = clamp(z, ZMIN, ZMAX); sizeWrap();
+    const nr = wrap.getBoundingClientRect(); stg.scrollLeft += (nr.left + fx * nr.width) - cx; stg.scrollTop += (nr.top + fy * nr.height) - cy;
+    syncZoomUi(); if (!zRaf) zRaf = requestAnimationFrame(() => { zRaf = 0; paintCanvas(); });
+  }
+  const ptr = new Map(); let pinch = null, pan = null;
+  const mid = () => { const [a, b] = [...ptr.values()]; return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, d: Math.hypot(a.x - b.x, a.y - b.y) || 1 }; };
+  stg.addEventListener('pointerdown', e => {
+    ptr.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (ptr.size === 2) { drag = null; pan = null; const m = mid(); pinch = { d: m.d, z: ED.zoom, x: m.x, y: m.y }; }
+    else if (ptr.size === 1 && !e.target.closest('#cropBox') && ED.zoom > 1) { pan = { id: e.pointerId, x: e.clientX, y: e.clientY, l: stg.scrollLeft, t: stg.scrollTop }; try { stg.setPointerCapture(e.pointerId); } catch (x) {} }
+  });
+  stg.addEventListener('pointermove', e => {
+    if (!ptr.has(e.pointerId)) return; ptr.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pinch && ptr.size >= 2) { const m = mid(); stg.scrollLeft -= (m.x - pinch.x); stg.scrollTop -= (m.y - pinch.y); pinch.x = m.x; pinch.y = m.y; setEdZoom(pinch.z * m.d / pinch.d, m.x, m.y); }
+    else if (pan && pan.id === e.pointerId) { stg.scrollLeft = pan.l - (e.clientX - pan.x); stg.scrollTop = pan.t - (e.clientY - pan.y); }
+  });
+  const endPtr = e => { ptr.delete(e.pointerId); if (ptr.size < 2) pinch = null; if (pan && pan.id === e.pointerId) pan = null; };
+  stg.addEventListener('pointerup', endPtr); stg.addEventListener('pointercancel', endPtr);
+  stg.addEventListener('wheel', e => { if (!ED.src) return; e.preventDefault(); setEdZoom(ED.zoom * Math.exp(-e.deltaY * 0.0015), e.clientX, e.clientY); }, { passive: false });
+  $('edZoom').oninput = e => setEdZoom(Number(e.target.value));
+  $('edZIn').onclick = () => setEdZoom(ED.zoom + 0.5); $('edZOut').onclick = () => setEdZoom(ED.zoom - 0.5);
+  $('edZFit').onclick = () => { setEdZoom(1); stg.scrollLeft = 0; stg.scrollTop = 0; };
+  $('edDel').onclick = () => {
+    const k = ED.key; if (!k) return; dropEntry(k); renderAll();
+    const next = order.find(x => S[x] && S[x].waitingForEdit); if (next) openEditor(next); else closeEditor();
+  };
   async function openEditor(key) {
     const e = S[key]; if (!e) return; let bmp;
     try { bmp = await loadBitmap(e.blob); } catch (x) { toast('Cannot open this photo.'); return; }
     if (!ED.src) { ED.resume = !!stream; if (stream) stopCam(true); }
-    ED.key = key; ED.src = bmp; ED.rot = 0; ED.flip = false; ED.crop = { x: 0, y: 0, w: 1, h: 1 };
-    const k = Math.min(1, 1400 / Math.max(bmp.width, bmp.height)), pv = document.createElement('canvas'); pv.width = Math.round(bmp.width * k); pv.height = Math.round(bmp.height * k); pv.getContext('2d').drawImage(bmp, 0, 0, pv.width, pv.height); ED.prev = pv;
+    ED.key = key; ED.src = bmp; ED.rot = 0; ED.flip = false; ED.crop = { x: 0, y: 0, w: 1, h: 1 }; ED.zoom = 1; syncZoomUi(); stg.scrollLeft = 0; stg.scrollTop = 0;
+    const k = Math.min(1, 2400 / Math.max(bmp.width, bmp.height)), pv = document.createElement('canvas'); pv.width = Math.round(bmp.width * k); pv.height = Math.round(bmp.height * k); pv.getContext('2d').drawImage(bmp, 0, 0, pv.width, pv.height); ED.prev = pv;
     $('editor').classList.remove('hide'); const i = order.indexOf(key); $('edNav').classList.toggle('hide', order.length < 2); $('edCount').textContent = (i + 1) + ' / ' + order.length;
-    $('edTitle').textContent = 'Edit photo'; setRatio(ED.ratio); requestAnimationFrame(drawPreview);
+    $('edTitle').textContent = e.waitingForEdit ? 'Edit, then Send' : 'Edit photo'; setRatio(ED.ratio); requestAnimationFrame(drawPreview);
   }
   function closeEditor() {
     const key = ED.key, entry = key && S[key];
     $('editor').classList.add('hide'); ED.src = null; ED.prev = null; ED.key = null;
-    if (entry && entry.waitingForEdit) {
-      entry.waitingForEdit = false;
-      sendQ.push(key);
-      pump();
-    }
+    if (entry && entry.waitingForEdit) toast('Not sent yet — tap “Last photo” to edit & send.');
     if (ED.resume && !$('phoneView').classList.contains('hide') && !modalOpen()) startCam(); ED.resume = false;
   }
   $('slotLast').onclick = () => { if (S[lastKey]) openEditor(lastKey); else toast('Take a photo first.'); };
@@ -824,7 +891,7 @@
       const blob = await exportEdit(), orig = S[ED.key], name = newName().replace('.jpg', '_edit.jpg');
       if ($('edDl').checked) { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000); }
       const replaced = orig && (orig.st === 'queued' || orig.st === 'fail') && (orig.waitingForEdit || orig.st === 'queued' || orig.st === 'fail'); if (replaced) dropEntry(ED.key);
-      onCapture(blob, name); closeEditor(); toast(replaced ? 'Edited photo replaces the unsent original.' : 'Edited photo queued to send.');
+      onCapture(blob, name); const next = order.find(x => S[x] && S[x].waitingForEdit && x !== name); if (next) openEditor(next); else closeEditor(); toast(replaced ? 'Edited photo replaces the unsent original.' : 'Edited photo queued to send.');
     } catch (e) { toast('Could not export: ' + e.message); }
     ED.busy = false; $('edSend').textContent = 'Send ➤';
   };
@@ -832,8 +899,9 @@
     if (location.hash.startsWith('#cfg=')) { const o = parseCfg(location.href); if (o) applyCfg(o); try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {} }
     renderChips(); layoutCam(); refreshBar(); if (!hasCfg()) sheet.classList.remove('hide');
     const old = await dbAll(), DAY = 24 * 3600 * 1000;
-    for (const r of old) { if (Date.now() - r.ts > DAY) dbDel(r.id); else onCapture(r.blob, r.id); }
+    for (const r of old) { if (Date.now() - r.ts > DAY) dbDel(r.id); else onCapture(r.blob, r.id, false, !!r.held); }
     if (camWanted) startCam();
+    restoreFolder();
   }
   init();
 })();
