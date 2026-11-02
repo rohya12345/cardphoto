@@ -115,6 +115,9 @@
   .zrow button.fit { width:auto; border-radius:16px; padding:0 12px; font-size:13px; }
   .zrow .v { min-width:46px; text-align:right; font-weight:700; font-size:14px; }
   .modal label.chk { color:#fff; }
+  #focusRing { width:64px; height:64px; border:2px solid #ffd54a; border-radius:50%; transform:translate(-50%,-50%); opacity:0; pointer-events:none; transition:opacity .3s; }
+  #focusRing.on { opacity:1; }
+  #gridOv { inset:0; pointer-events:none; background-image:linear-gradient(to right,transparent calc(33.33% - .5px),rgba(255,255,255,.5) calc(33.33% - .5px),rgba(255,255,255,.5) calc(33.33% + .5px),transparent calc(33.33% + .5px),transparent calc(66.66% - .5px),rgba(255,255,255,.5) calc(66.66% - .5px),rgba(255,255,255,.5) calc(66.66% + .5px),transparent calc(66.66% + .5px)),linear-gradient(to bottom,transparent calc(33.33% - .5px),rgba(255,255,255,.5) calc(33.33% - .5px),rgba(255,255,255,.5) calc(33.33% + .5px),transparent calc(33.33% + .5px),transparent calc(66.66% - .5px),rgba(255,255,255,.5) calc(66.66% - .5px),rgba(255,255,255,.5) calc(66.66% + .5px),transparent calc(66.66% + .5px)); }
 </style>
 </head>
 <body>
@@ -133,6 +136,8 @@
         <video id="video" playsinline muted autoplay></video>
         <div id="camPlaceholder">Camera is off — tap 📷</div>
         <div id="flash"></div>
+        <div class="ov hide" id="gridOv"></div>
+        <div class="ov" id="focusRing"></div>
         <button class="ov" id="shapeBtn" aria-label="Photo shape">1:1</button>
         <div class="ov tr">
           <button id="btnFlip" aria-label="Switch camera">⟲</button>
@@ -188,7 +193,7 @@
     <div class="chips" id="sizeChips">
       <button data-s="actual">Maximum</button><button data-s="reduced">Reduced</button>
     </div>
-    <div class="muted" style="margin-top:6px">Maximum keeps the camera's full still resolution (12 MP or more on most phones) and saves JPEG at quality 95. Reduced is faster and smaller.</div>
+    <div class="muted" style="margin-top:6px">Maximum keeps the camera's full still resolution (12 MP or more on most phones) and saves JPEG at quality 98. Reduced is faster and smaller.</div>
     <div class="sec">Zoom</div>
     <div class="zoomrow hide" id="zoomRow">
       <button class="zb" id="zOut" aria-label="Zoom out">−</button>
@@ -198,6 +203,16 @@
     </div>
     <div class="muted">Pinch on the camera, or use the 1× 2× 3× buttons on it.</div>
     <div id="camMsg" class="muted" style="margin-top:6px"></div>
+    <div class="sec">Gold / jewelry capture</div>
+    <div class="muted">Focus (you can also tap the preview to focus on a spot)</div>
+    <div class="chips" id="focusChips"><button data-f="auto">Auto</button><button data-f="close" id="focusCloseBtn">Close-up (locked)</button></div>
+    <div class="muted" style="margin-top:10px">White balance (match your light, so gold stays gold)</div>
+    <div class="chips" id="wbChips"><button data-w="auto">Auto</button><button data-w="3200">3200K warm</button><button data-w="4500">4500K</button><button data-w="5500">5500K day</button><button data-w="6500">6500K cool</button></div>
+    <div class="rng" style="margin-top:10px"><span>Exposure</span><input type="range" id="evSl" min="-2" max="2" step="0.1" value="0"><span class="v" id="evV">0.0</span></div>
+    <label class="chk"><input type="checkbox" id="burstChk"> Take 3 shots, keep the sharpest</label>
+    <label class="chk"><input type="checkbox" id="gridChk"> Show grid</label>
+    <div class="muted" style="margin-top:8px" id="goldCaps"></div>
+    <div class="muted" style="margin-top:8px">Tips: no flash, use soft diffused light on a plain grey or white background, set exposure to −0.3 to −0.7 so shiny gold does not burn out, keep the phone steady (tripod or rest it), and stay far enough away to keep focus. Use real camera zoom or move closer, because digital zoom loses detail.</div>
   </div>
 </div>
 <div id="qrScan" class="modal hide">
@@ -232,16 +247,18 @@
       <div class="rng"><span>Brightness</span><input type="range" id="edB" min="50" max="150" value="100"><span class="v" id="edBv">100</span></div>
       <div class="rng"><span>Contrast</span><input type="range" id="edC" min="50" max="150" value="100"><span class="v" id="edCv2">100</span></div>
       <div class="rng"><span>Saturation</span><input type="range" id="edS" min="0" max="200" value="100"><span class="v" id="edSv">100</span></div>
+      <div class="rng"><span>Sharpen</span><input type="range" id="edSh" min="0" max="100" value="0"><span class="v" id="edShv">0</span></div>
+      <div class="muted">Sharpen is applied when you press Send (not shown in the preview).</div>
       <label class="chk"><input type="checkbox" id="edBW"> Black &amp; white</label>
       <div class="row"><button id="edResetAdj">Reset adjustments</button></div>
     </div>
     <div id="pAdv" class="hide">
       <div class="sec" style="margin-top:2px">Output size (longest side)</div>
       <div class="chips" id="edMax"><button data-m="orig" class="on">Original</button><button data-m="3200">3200</button><button data-m="2400">2400</button><button data-m="1600">1600</button><button data-m="1024">1024</button><button data-m="640">640</button></div>
-      <div class="rng"><span>JPEG quality</span><input type="range" id="edQ" min="50" max="100" value="95"><span class="v" id="edQv">95</span></div>
+      <div class="rng"><span>JPEG quality</span><input type="range" id="edQ" min="50" max="100" value="98"><span class="v" id="edQv">98</span></div>
       <label class="chk"><input type="checkbox" id="edDl"> Also save a copy on this phone</label>
       <div class="muted" id="edInfo" style="margin-top:8px"></div>
-      <div class="muted" style="margin-top:6px">Edited photos are sent as a new file (name ends with _edit). If the original hasn’t been sent yet, it is replaced.</div>
+      <div class="muted" style="margin-top:6px">Edited photos are sent as a new file (name ends with _edit). If the original hasn’t been sent yet, it is replaced. An unedited photo is sent exactly as captured, with no re-compression.</div>
     </div>
   </div>
 </div>
@@ -289,6 +306,8 @@
   let ratio = localStorage.getItem('pt_ratio') || '4:3', sizeMode = localStorage.getItem('pt_size') || 'actual';
   let facing = 'environment', stream = null, wake = null;
   let camWanted = localStorage.getItem('pt_cam') !== '0';
+  let wbPref = localStorage.getItem('pt_wb') || 'auto', evPref = Number(localStorage.getItem('pt_ev') || 0), focusPref = localStorage.getItem('pt_focus') || 'auto';
+  let burstOn = localStorage.getItem('pt_burst') !== '0', gridOn = localStorage.getItem('pt_grid') === '1', camCaps = {};
   function renderChips() {
     document.querySelectorAll('#ratioChips button').forEach(b => b.classList.toggle('on', b.dataset.r === ratio));
     document.querySelectorAll('#sizeChips button').forEach(b => b.classList.toggle('on', b.dataset.s === sizeMode)); $('shapeBtn').textContent = ratio === 'full' ? 'Full' : ratio;
@@ -361,16 +380,93 @@
     } catch (e) {}
     return s;
   }
-  async function stillFromCamera() {
-    if (!ic) return null;
-    let opts;
+  /* Full-resolution still from the sensor. The raw camera JPEG is kept in lastStillBlob
+     so it can be sent untouched (no re-encode) when no crop is needed. */
+  let lastStillBlob = null;
+  function sharpScore(bmp) {
+    const w0 = bmp.width || bmp.naturalWidth, h0 = bmp.height || bmp.naturalHeight, k = Math.min(1, 800 / Math.max(w0, h0));
+    const sx = Math.round(w0 * 0.2), sy = Math.round(h0 * 0.2), sw = Math.max(8, Math.round(w0 * 0.6)), sh = Math.max(8, Math.round(h0 * 0.6));
+    const w = Math.max(8, Math.round(sw * k)), h = Math.max(8, Math.round(sh * k));
+    const c = document.createElement('canvas'); c.width = w; c.height = h;
+    const x = c.getContext('2d', { willReadFrequently: true }); x.drawImage(bmp, sx, sy, sw, sh, 0, 0, w, h);
+    const d = x.getImageData(0, 0, w, h).data, g = new Float32Array(w * h);
+    for (let i = 0, j = 0; i < d.length; i += 4, j++) g[j] = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+    let s1 = 0, s2 = 0, n = 0;
+    for (let yy = 1; yy < h - 1; yy++) for (let xx = 1; xx < w - 1; xx++) { const j = yy * w + xx, l = 4 * g[j] - g[j - 1] - g[j + 1] - g[j - w] - g[j + w]; s1 += l; s2 += l * l; n++; }
+    const m = s1 / (n || 1); return s2 / (n || 1) - m * m;
+  }
+  async function oneStill() {
+    let opts = {};
     try {
       const pc = await ic.getPhotoCapabilities();
       if (pc && pc.imageWidth && pc.imageWidth.max && pc.imageHeight && pc.imageHeight.max) opts = { imageWidth: pc.imageWidth.max, imageHeight: pc.imageHeight.max };
     } catch (e) {}
-    const blob = await ic.takePhoto(opts);
-    return await loadBitmap(blob);
+    try { return await ic.takePhoto({ ...opts, fillLightMode: 'off', redEyeReduction: false }); }
+    catch (e) { return await ic.takePhoto(Object.keys(opts).length ? opts : undefined); }
   }
+  // Takes 1 or 3 full-resolution stills and keeps the sharpest one. The raw camera JPEG
+  // of the winner is kept in lastStillBlob so it can be sent without any re-encoding.
+  async function stillFromCamera() {
+    if (!ic) return null;
+    const n = burstOn ? 3 : 1; let best = null;
+    for (let i = 0; i < n; i++) {
+      let blob; try { blob = await oneStill(); } catch (e) { if (!best) throw e; break; }
+      const bmp = await loadBitmap(blob);
+      if (n === 1) { best = { blob, bmp }; break; }
+      const sc = sharpScore(bmp);
+      if (!best || sc > best.sc) { if (best && best.bmp.close) { try { best.bmp.close(); } catch (e) {} } best = { blob, bmp, sc }; }
+      else if (bmp.close) { try { bmp.close(); } catch (e) {} }
+      if (i < n - 1) await sleep(120);
+    }
+    if (!best) return null;
+    lastStillBlob = best.blob; return best.bmp;
+  }
+  /* ---------- gold mode: focus / exposure / white balance ---------- */
+  async function applyAdv(o) { const tr = stream && stream.getVideoTracks()[0]; if (!tr) return false; try { await tr.applyConstraints({ advanced: [o] }); return true; } catch (e) { return false; } }
+  const capHas = (k, v) => { const c = camCaps && camCaps[k]; return !!c && (Array.isArray(c) ? c.includes(v) : true); };
+  async function applyGold() {
+    if (capHas('focusMode', 'continuous')) await applyAdv({ focusMode: 'continuous' });
+    if (capHas('exposureMode', 'continuous')) await applyAdv({ exposureMode: 'continuous' });
+    if (wbPref === 'auto') { if (capHas('whiteBalanceMode', 'continuous')) await applyAdv({ whiteBalanceMode: 'continuous' }); }
+    else if (capHas('whiteBalanceMode', 'manual') && camCaps.colorTemperature) {
+      const ct = camCaps.colorTemperature; await applyAdv({ whiteBalanceMode: 'manual', colorTemperature: Math.min(ct.max, Math.max(ct.min, Number(wbPref))) });
+    }
+    const ec = camCaps.exposureCompensation; if (ec) await applyAdv({ exposureCompensation: Math.min(ec.max, Math.max(ec.min, evPref)) });
+    if (focusPref === 'close' && camCaps.focusDistance && capHas('focusMode', 'manual')) await applyAdv({ focusMode: 'manual', focusDistance: camCaps.focusDistance.min });
+  }
+  function renderGold() {
+    document.querySelectorAll('#focusChips button').forEach(b => b.classList.toggle('on', b.dataset.f === focusPref));
+    document.querySelectorAll('#wbChips button').forEach(b => b.classList.toggle('on', b.dataset.w === wbPref));
+    $('evSl').value = evPref; $('evV').textContent = (evPref > 0 ? '+' : '') + evPref.toFixed(1);
+    $('burstChk').checked = burstOn; $('gridChk').checked = gridOn; $('gridOv').classList.toggle('hide', !gridOn);
+  }
+  function goldUi(caps) {
+    const ec = caps.exposureCompensation, sl = $('evSl');
+    if (ec && ec.max > ec.min) { sl.disabled = false; sl.min = ec.min; sl.max = ec.max; sl.step = ec.step || 0.1; } else sl.disabled = true;
+    $('focusCloseBtn').hidden = !(caps.focusDistance && Array.isArray(caps.focusMode) && caps.focusMode.includes('manual'));
+    document.querySelectorAll('#wbChips button:not([data-w="auto"])').forEach(b => b.hidden = !caps.colorTemperature);
+    const f = []; if (caps.focusMode) f.push('focus'); if (caps.exposureCompensation) f.push('exposure'); if (caps.colorTemperature) f.push('white balance');
+    $('goldCaps').textContent = f.length ? 'This camera supports: ' + f.join(', ') + '.' : 'This browser/camera does not expose manual controls (common on iPhone). Auto settings will be used.';
+  }
+  document.querySelectorAll('#focusChips button').forEach(b => b.onclick = () => { focusPref = b.dataset.f; localStorage.setItem('pt_focus', focusPref); renderGold(); applyGold(); });
+  document.querySelectorAll('#wbChips button').forEach(b => b.onclick = () => { wbPref = b.dataset.w; localStorage.setItem('pt_wb', wbPref); renderGold(); applyGold(); });
+  $('evSl').oninput = e => { evPref = Number(e.target.value); localStorage.setItem('pt_ev', String(evPref)); renderGold(); applyAdv({ exposureCompensation: evPref }); };
+  $('burstChk').onchange = e => { burstOn = e.target.checked; localStorage.setItem('pt_burst', burstOn ? '1' : '0'); };
+  $('gridChk').onchange = e => { gridOn = e.target.checked; localStorage.setItem('pt_grid', gridOn ? '1' : '0'); renderGold(); };
+  async function tapFocus(cx, cy) {
+    const r = cb.getBoundingClientRect(); if (!r.width || !r.height) return;
+    const nx = Math.min(1, Math.max(0, (cx - r.left) / r.width)), ny = Math.min(1, Math.max(0, (cy - r.top) / r.height));
+    const ring = $('focusRing'); ring.style.left = (cx - r.left) + 'px'; ring.style.top = (cy - r.top) + 'px'; ring.classList.add('on'); clearTimeout(tapFocus.t); tapFocus.t = setTimeout(() => ring.classList.remove('on'), 1200);
+    if (!stream) return;
+    if (focusPref === 'close') { focusPref = 'auto'; localStorage.setItem('pt_focus', 'auto'); renderGold(); }
+    const poi = { pointsOfInterest: [{ x: nx, y: ny }] };
+    if (capHas('focusMode', 'single-shot')) { await applyAdv({ focusMode: 'single-shot', ...poi }); setTimeout(() => applyAdv({ focusMode: 'continuous' }), 1800); }
+    else if (capHas('focusMode', 'continuous')) await applyAdv({ focusMode: 'continuous', ...poi });
+    if (capHas('exposureMode', 'continuous')) await applyAdv({ exposureMode: 'continuous', ...poi });
+  }
+  let tapS = null, tapMulti = false;
+  cb.addEventListener('pointerdown', e => { if (pts.size > 1) { tapMulti = true; tapS = null; } else { tapS = { x: e.clientX, y: e.clientY, t: Date.now() }; tapMulti = false; } });
+  cb.addEventListener('pointerup', e => { if (tapS && !tapMulti && !e.target.closest('button') && Math.hypot(e.clientX - tapS.x, e.clientY - tapS.y) < 12 && Date.now() - tapS.t < 500) tapFocus(e.clientX, e.clientY); tapS = null; });
   async function startCam() {
     if (!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)) { camMsg('Live camera needs https. Use “Camera app” instead.'); return false; }
     stopCam(true);
@@ -383,7 +479,7 @@
       const tr = s.getVideoTracks()[0], caps = tr && tr.getCapabilities ? tr.getCapabilities() : {};
       $('btnTorch').hidden = !caps.torch; if (tr) tr.__torch = false;
       ic = null; if (typeof ImageCapture !== 'undefined' && tr) { try { ic = new ImageCapture(tr); } catch (e) { ic = null; } }
-      setZoomRange(caps);
+      setZoomRange(caps); camCaps = caps; goldUi(caps); renderGold(); await applyGold();
       const st = tr && tr.getSettings ? tr.getSettings() : {};
       $('camMsg').textContent = st.width && st.height ? ('Live camera ' + st.width + '×' + st.height + (ic ? ' · full-resolution stills enabled' : '')) : '';
       try { if (navigator.wakeLock) wake = await navigator.wakeLock.request('screen'); } catch (e) {} layoutCam(); return true;
@@ -403,31 +499,36 @@
     if (snapping) return;
     const vw = video.videoWidth, vh = video.videoHeight;
     if (!vw || !vh) { toast('Camera not ready yet.'); return; }
-    snapping = true;
+    snapping = true; lastStillBlob = null;
+    if (burstOn && ic && sizeMode === 'actual') toast('Hold still – capturing 3 shots…');
     let src = null;
     try {
       const tr = stream && stream.getVideoTracks()[0];
       if (!ic && typeof ImageCapture !== 'undefined' && tr) { try { ic = new ImageCapture(tr); } catch (e) { ic = null; } }
       if (sizeMode === 'actual' && ic) { try { src = await stillFromCamera(); } catch (e) { src = null; } }
-      // A still whose aspect ratio differs from the preview would make the on-screen
-      // framing/crop wrong — in that case fall back to the (aligned) preview frame.
-      if (src) { const w = src.width || src.naturalWidth, h = src.height || src.naturalHeight; if (!w || !h || Math.abs(w / h - vw / vh) > 0.02) { try { src.close && src.close(); } catch (e) {} src = null; } }
     } catch (e) { src = null; }
     try {
-      const b = cropRect(vw, vh);
-      let n = { x: b.sx / vw, y: b.sy / vh, w: b.sw / vw, h: b.sh / vh };
-      if (!hwZoom && zoom > 1) { const f = 1 / zoom; n = { x: n.x + n.w * (1 - f) / 2, y: n.y + n.h * (1 - f) / 2, w: n.w * f, h: n.h * f }; }
       const img = src || video;
       const W = src ? (src.width || src.naturalWidth) : vw, H = src ? (src.height || src.naturalHeight) : vh;
-      const sx = Math.max(0, Math.min(W - 1, Math.round(n.x * W))), sy = Math.max(0, Math.min(H - 1, Math.round(n.y * H)));
-      const sw = Math.max(1, Math.min(W - sx, Math.round(n.w * W))), sh = Math.max(1, Math.min(H - sy, Math.round(n.h * H)));
+      // crop on the real source (centred), so a still with a different aspect is kept, not discarded
+      const b = cropRect(W, H);
+      let sx = b.sx, sy = b.sy, sw = b.sw, sh = b.sh;
+      if (!hwZoom && zoom > 1) { const f = 1 / zoom; sx = Math.round(sx + sw * (1 - f) / 2); sy = Math.round(sy + sh * (1 - f) / 2); sw = Math.round(sw * f); sh = Math.round(sh * f); }
+      sx = Math.max(0, Math.min(W - 1, sx)); sy = Math.max(0, Math.min(H - 1, sy));
+      sw = Math.max(1, Math.min(W - sx, sw)); sh = Math.max(1, Math.min(H - sy, sh));
+      // nothing to crop -> send the camera's own JPEG untouched (no re-encode loss)
+      if (src && lastStillBlob && lastStillBlob.type === 'image/jpeg' && sizeMode === 'actual' &&
+          sx <= 1 && sy <= 1 && Math.abs(sw - W) <= 2 && Math.abs(sh - H) <= 2) {
+        try { src.close && src.close(); } catch (e) {}
+        onCapture(lastStillBlob, undefined, true); return;
+      }
       const cap = sizeMode === 'actual' ? 0 : 1600, sc = cap ? Math.min(1, cap / Math.max(sw, sh)) : 1;
       const cv = document.createElement('canvas');
       cv.width = Math.max(1, Math.round(sw * sc)); cv.height = Math.max(1, Math.round(sh * sc));
       const x = cv.getContext('2d'); x.imageSmoothingEnabled = true; x.imageSmoothingQuality = 'high';
       x.drawImage(img, sx, sy, sw, sh, 0, 0, cv.width, cv.height);
       if (src && src.close) { try { src.close(); } catch (e) {} }
-      cv.toBlob(b2 => { if (b2) onCapture(b2, undefined, true); else toast('Could not capture.'); }, 'image/jpeg', sizeMode === 'actual' ? 0.95 : 0.9);
+      cv.toBlob(b2 => { if (b2) onCapture(b2, undefined, true); else toast('Could not capture.'); }, 'image/jpeg', sizeMode === 'actual' ? 0.98 : 0.9);
     } catch (e) { toast('Capture failed: ' + (e.message || e.name)); }
     finally { snapping = false; }
   }
@@ -442,13 +543,15 @@
     try { bmp = await createImageBitmap(file, { imageOrientation: 'from-image' }); }
     catch (e) { bmp = await new Promise((res, rej) => { const u = URL.createObjectURL(file), im = new Image(); im.onload = () => { URL.revokeObjectURL(u); res(im); }; im.onerror = rej; im.src = u; }); }
     const w0 = bmp.width || bmp.naturalWidth, h0 = bmp.height || bmp.naturalHeight, c = cropRect(w0, h0);
+    // nothing to crop or shrink -> pass the original JPEG through untouched
+    if (sizeMode === 'actual' && file.type === 'image/jpeg' && c.sx <= 1 && c.sy <= 1 && Math.abs(c.sw - w0) <= 2 && Math.abs(c.sh - h0) <= 2) { if (bmp.close) { try { bmp.close(); } catch (e) {} } return file; }
     const sc = sizeMode === 'actual' ? 1 : Math.min(1, 1600 / Math.max(c.sw, c.sh));
     const cv = document.createElement('canvas');
     cv.width = Math.max(1, Math.round(c.sw * sc)); cv.height = Math.max(1, Math.round(c.sh * sc));
     const x = cv.getContext('2d'); x.imageSmoothingEnabled = true; x.imageSmoothingQuality = 'high';
     x.drawImage(bmp, c.sx, c.sy, c.sw, c.sh, 0, 0, cv.width, cv.height);
     if (bmp.close) { try { bmp.close(); } catch (e) {} }
-    return new Promise((res, rej) => cv.toBlob(b => b ? res(b) : rej(new Error('encode failed')), 'image/jpeg', sizeMode === 'actual' ? 0.95 : 0.9));
+    return new Promise((res, rej) => cv.toBlob(b => b ? res(b) : rej(new Error('encode failed')), 'image/jpeg', sizeMode === 'actual' ? 0.98 : 0.9));
   }
   async function reduceBlob(blob) {
     const bmp = await createImageBitmap(blob), sc = Math.min(1, 2560 / Math.max(bmp.width, bmp.height));
@@ -485,16 +588,16 @@
   async function send(k) {
     const e = S[k], c = cfg(); e.st = 'sending'; renderAll();
     for (let attempt = 1; attempt <= 3; attempt++) {
-      const ac = new AbortController(), t = setTimeout(() => ac.abort(), 60000);
+      const ac = new AbortController(), t = setTimeout(() => ac.abort(), 180000);
       try {
         const resp = await fetch(`${c.url}/storage/v1/object/${c.bucket}/${k}`, { method: 'POST', headers: hdr({ 'Content-Type': 'image/jpeg' }), body: e.blob, signal: ac.signal });
         if (resp.ok) { e.st = 'sent'; e.err = ''; dbDel(k); pruneSent(k); renderAll(); return; }
         let msg = ''; try { msg = (await resp.json()).message || ''; } catch (x) {} e.err = msg || ('HTTP ' + resp.status);
+        // only shrink when the server explicitly says the file is too large (413)
         if (resp.status === 413 && !e.reduced) { try { e.blob = await reduceBlob(e.blob); e.reduced = true; e.err = ''; attempt--; continue; } catch (x) {} }
         if (resp.status === 400 || resp.status === 401 || resp.status === 403 || resp.status === 409 || resp.status === 413) break;
       } catch (err) {
         e.err = err.name === 'AbortError' ? 'timeout' : (err.message || 'network');
-        if (!e.reduced && e.blob.size > 4e6) { try { e.blob = await reduceBlob(e.blob); e.reduced = true; attempt--; continue; } catch (x) {} }
       } finally { clearTimeout(t); }
       if (attempt < 3) await sleep(1500 * attempt);
     }
@@ -672,7 +775,12 @@
   }
   function handleQr(txt) {
     const o = parseCfg(txt);
-    if (!o) { $('qrMsg').textContent = 'That QR is not a Photo Transfer setup code. Try again.'; return false; }
+    if (!o) {
+      // a normal web link QR: close the scanner and open that page
+      const u = String(txt || '').trim();
+      if (/^https?:\/\/\S+$/i.test(u)) { $('qrMsg').textContent = 'Opening ' + u; closeScan(); setTimeout(() => { location.href = u; }, 150); return true; }
+      $('qrMsg').textContent = 'That QR is not a Photo Transfer setup code or a web link. Try again.'; return false;
+    }
     applyCfg(o); closeScan(); return true;
   }
   async function openScan() {
@@ -704,15 +812,16 @@
       if (!t) { $('qrMsg').textContent = 'No QR code found in that image.'; return; } handleQr(t);
     } catch (x) { $('qrMsg').textContent = 'Could not read image: ' + x.message; }
   };
+  const APP_URL = 'https://rohya12345.github.io/cardphoto/';
   async function showQr() {
     if (!hasCfg()) { toast('Enter and save settings first.'); return; }
     $('qrShow').classList.remove('hide'); $('qrShowMsg').textContent = 'Generating…';
     try {
-      await needQrGen(); const c = cfg(), q = window.qrcode(0, 'L'); q.addData('PTCFG:' + JSON.stringify({ u: c.url, k: c.key, b: c.bucket })); q.make();
+      await needQrGen(); const c = cfg(), q = window.qrcode(0, 'L'); q.addData(APP_URL + '#cfg=' + encodeURIComponent(btoa(JSON.stringify({ u: c.url, k: c.key, b: c.bucket })))); q.make();
       const n = q.getModuleCount(), sc = Math.max(4, Math.floor(720 / (n + 8))), pad = 4 * sc, size = n * sc + pad * 2, cv = $('qrCv'); cv.width = cv.height = size;
       const x = cv.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, size, size); x.fillStyle = '#000';
       for (let r = 0; r < n; r++) for (let k = 0; k < n; k++) if (q.isDark(r, k)) x.fillRect(pad + k * sc, pad + r * sc, sc, sc);
-      $('qrShowMsg').textContent = 'Scan this from the other device (⚙ → Scan setup QR). It contains your Supabase key, so don’t share a screenshot of it.';
+      $('qrShowMsg').textContent = 'Scan this with any phone camera: it opens the app at rohya12345.github.io/cardphoto and loads your settings automatically. It contains your Supabase key, so don’t share a screenshot of it.';
     } catch (e) { $('qrShowMsg').textContent = 'Could not make the QR: ' + e.message; }
   }
   $('btnShowQr').onclick = showQr; $('qrShowClose').onclick = () => $('qrShow').classList.add('hide');
@@ -727,10 +836,10 @@
   }
   const FILTER_OK = (() => { try { const c = document.createElement('canvas'); c.width = c.height = 1; const x = c.getContext('2d'); x.filter = 'grayscale(1)'; x.fillStyle = '#f00'; x.fillRect(0, 0, 1, 1); const d = x.getImageData(0, 0, 1, 1).data; return d[0] === d[1]; } catch (e) { return false; } })();
   const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
-  const ED = { key: null, src: null, prev: null, rot: 0, flip: false, crop: { x: 0, y: 0, w: 1, h: 1 }, ratio: 'free', b: 100, c: 100, s: 100, bw: false, max: 'orig', q: 95, busy: false, resume: false, zoom: 1, fw: 1, fh: 1 };
+  const ED = { key: null, src: null, prev: null, rot: 0, flip: false, crop: { x: 0, y: 0, w: 1, h: 1 }, ratio: 'free', b: 100, c: 100, s: 100, bw: false, max: 'orig', q: 98, sh: 0, busy: false, resume: false, zoom: 1, fw: 1, fh: 1 };
   const tdims = () => ED.rot % 2 ? [ED.src.height, ED.src.width] : [ED.src.width, ED.src.height];
   const cssFilter = () => `brightness(${ED.b}%) contrast(${ED.c}%) saturate(${ED.s}%)` + (ED.bw ? ' grayscale(1)' : '');
-  const neutral = () => ED.b === 100 && ED.c === 100 && ED.s === 100 && !ED.bw;
+  const neutral = () => ED.b === 100 && ED.c === 100 && ED.s === 100 && !ED.bw && ED.sh === 0;
   function drawT(ctx, img, W, H) {
     ctx.save(); ctx.translate(W / 2, H / 2); ctx.rotate(ED.rot * Math.PI / 2); if (ED.flip) ctx.scale(-1, 1);
     const odd = ED.rot % 2 === 1, dw = odd ? H : W, dh = odd ? W : H; ctx.drawImage(img, -dw / 2, -dh / 2, dw, dh); ctx.restore();
@@ -854,9 +963,9 @@
   $('edFlip').onclick = () => { ED.flip = !ED.flip; drawPreview(); };
   $('edResetCrop').onclick = () => { ED.ratio = 'free'; resetCrop(); };
   const sl = (id, vid, key) => $(id).oninput = e => { ED[key] = Number(e.target.value); $(vid).textContent = e.target.value; $('edCv').style.filter = cssFilter(); };
-  sl('edB', 'edBv', 'b'); sl('edC', 'edCv2', 'c'); sl('edS', 'edSv', 's'); sl('edQ', 'edQv', 'q');
+  sl('edSh', 'edShv', 'sh'); sl('edB', 'edBv', 'b'); sl('edC', 'edCv2', 'c'); sl('edS', 'edSv', 's'); sl('edQ', 'edQv', 'q');
   $('edBW').onchange = e => { ED.bw = e.target.checked; $('edCv').style.filter = cssFilter(); };
-  $('edResetAdj').onclick = () => { ED.b = ED.c = ED.s = 100; ED.bw = false; $('edB').value = $('edC').value = $('edS').value = 100; $('edBv').textContent = $('edCv2').textContent = $('edSv').textContent = '100'; $('edBW').checked = false; $('edCv').style.filter = cssFilter(); };
+  $('edResetAdj').onclick = () => { ED.b = ED.c = ED.s = 100; ED.bw = false; ED.sh = 0; $('edSh').value = 0; $('edShv').textContent = '0'; $('edB').value = $('edC').value = $('edS').value = 100; $('edBv').textContent = $('edCv2').textContent = $('edSv').textContent = '100'; $('edBW').checked = false; $('edCv').style.filter = cssFilter(); };
   document.querySelectorAll('#edMax button').forEach(b => b.onclick = () => { ED.max = b.dataset.m === 'orig' ? 'orig' : Number(b.dataset.m); document.querySelectorAll('#edMax button').forEach(x => x.classList.toggle('on', x === b)); updateInfo(); });
   function pixelFilter(cv) {
     const x = cv.getContext('2d'), im = x.getImageData(0, 0, cv.width, cv.height), d = im.data, b = ED.b / 100, c = ED.c / 100, s = ED.s / 100;
@@ -866,11 +975,18 @@
     }
     x.putImageData(im, 0, 0);
   }
+  function sharpen(cv, amt) {
+    const w = cv.width, h = cv.height, x = cv.getContext('2d'), im = x.getImageData(0, 0, w, h), src = im.data, out = new Uint8ClampedArray(src), a = amt / 100 * 0.9, c = 1 + 4 * a, w4 = w * 4;
+    for (let y = 1; y < h - 1; y++) { let p = (y * w + 1) * 4; for (let xx = 1; xx < w - 1; xx++, p += 4) { for (let k = 0; k < 3; k++) { const i = p + k; out[i] = c * src[i] - a * (src[i - 4] + src[i + 4] + src[i - w4] + src[i + w4]); } } }
+    im.data.set(out); x.putImageData(im, 0, 0);
+  }
   function exportEdit() {
     const d = outDims(), cv = document.createElement('canvas'); cv.width = d.ow; cv.height = d.oh; const x = cv.getContext('2d');
+    x.imageSmoothingEnabled = true; x.imageSmoothingQuality = 'high';
     if (FILTER_OK && !neutral()) x.filter = cssFilter();
     x.save(); x.translate(-d.cx * d.sc, -d.cy * d.sc); drawT(x, ED.src, d.tw * d.sc, d.th * d.sc); x.restore();
     if (!FILTER_OK && !neutral()) pixelFilter(cv);
+    if (ED.sh > 0) sharpen(cv, ED.sh);
     return new Promise((res, rej) => cv.toBlob(b => b ? res(b) : rej(new Error('encode failed')), 'image/jpeg', ED.q / 100));
   }
   function dropEntry(k) {
@@ -881,7 +997,10 @@
     if (ED.busy || !ED.src) return; if (!hasCfg()) { toast('Enter Supabase settings first.'); return; }
     ED.busy = true; $('edSend').textContent = '…';
     try {
-      const blob = await exportEdit(), orig = S[ED.key], name = newName().replace('.jpg', '_edit.jpg');
+      const orig = S[ED.key], name = newName().replace('.jpg', '_edit.jpg');
+      // nothing changed -> send the original bytes as-is (no re-encode, no quality loss)
+      const untouched = ED.rot === 0 && !ED.flip && neutral() && ED.max === 'orig' && ED.crop.x <= 0.001 && ED.crop.y <= 0.001 && ED.crop.w >= 0.999 && ED.crop.h >= 0.999;
+      const blob = (untouched && orig) ? orig.blob : await exportEdit();
       if ($('edDl').checked) { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000); }
       const replaced = orig && (orig.st === 'queued' || orig.st === 'fail') && (orig.waitingForEdit || orig.st === 'queued' || orig.st === 'fail'); if (replaced) dropEntry(ED.key);
       onCapture(blob, name); const next = order.find(x => S[x] && S[x].waitingForEdit && x !== name); if (next) openEditor(next); else closeEditor(); toast(replaced ? 'Edited photo replaces the unsent original.' : 'Edited photo queued to send.');
@@ -890,7 +1009,7 @@
   };
   async function init() {
     if (location.hash.startsWith('#cfg=')) { const o = parseCfg(location.href); if (o) applyCfg(o); try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {} }
-    renderChips(); layoutCam(); refreshBar(); if (!hasCfg()) sheet.classList.remove('hide');
+    renderChips(); renderGold(); layoutCam(); refreshBar(); if (!hasCfg()) sheet.classList.remove('hide');
     const old = await dbAll(), DAY = 24 * 3600 * 1000;
     for (const r of old) { if (Date.now() - r.ts > DAY) dbDel(r.id); else onCapture(r.blob, r.id, false, !!r.held); }
     if (camWanted) startCam();
@@ -899,6 +1018,5 @@
   init();
 })();
 </script>
-<script type="module" src="https://static.cloudflareinsights.com/beacon.min.js/v4bc70e2c01a94c73b74392e4234840661791215815920" integrity="sha512-L0ha0OXavK/8okipN9F8BtP84dg9DUhPERbBXzwI6dgTA55d2+yweo3pn5CSFYs45/r8md2+xvUPtTdvTNRfjA==" data-cf-beacon='{"version":"2024.11.0","token":"4edd5f8ec12a48cfa682ab8261b80a79","spa":2}' crossorigin="anonymous"></script>
 </body>
 </html>
